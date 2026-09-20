@@ -1,4 +1,5 @@
 import './style.css';
+import { listAvatars, saveAvatar, readAvatar, deleteAvatar } from './storage/avatar-history';
 import { World } from './core/world';
 import { MAX_ASSET_BYTES } from './core/format';
 import localAvatar from 'virtual:local-avatar';
@@ -65,6 +66,9 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <button class="secondary-button" id="open-avatar">${icon('upload')}VRMを読み込む</button>
         <button class="text-button default-avatar" id="default-avatar" hidden>標準アバターに戻す</button>
         <p class="privacy-note">${icon('lock')}共有を選ぶまで、この端末内で読み込みます。</p>
+        <div class="avatar-history-heading"><h3>この端末のアバター履歴</h3><p>読み込んだVRMを最大20件・合計256 MiBまで保存します。サーバーには保存しません。ブラウザのデータを消すと履歴も消えます。</p></div>
+        <p id="avatar-history-status" role="status">履歴を読み込み中…</p>
+        <ul id="avatar-history" aria-label="保存したアバター"></ul>
       </section>
       <section id="panel-social" role="tabpanel" aria-labelledby="tab-social" tabindex="0" hidden class="multiplayer-panel" aria-label="みんなで遊ぶ">
         <div class="section-heading"><h2>みんなで遊ぶ</h2><span class="tiny-label" id="member-count">最大6人</span></div>
@@ -113,6 +117,7 @@ let world: World;
 let pending = 0;
 let roomBytes: ArrayBuffer | undefined;
 let avatarBytes: ArrayBuffer | undefined;
+let selectedAvatarId: string | undefined;
 let session: RoomSession | undefined;
 let voice: VoiceController | undefined;
 let sessionTimer: ReturnType<typeof setInterval> | undefined;
@@ -123,10 +128,43 @@ function notify(message: string, error = false) {
   $('toast').classList.toggle('error', error); $('toast').hidden = false;
   toastTimer = setTimeout(() => { $('toast').hidden = true; }, error ? 12000 : 4500);
 }
+async function refreshAvatarHistory() {
+  try {
+    const entries = await listAvatars();
+    $('avatar-history-status').textContent = entries.length ? `${entries.length}件 · このブラウザ／アプリ内に保存` : 'まだ履歴はありません。VRMを読み込むと追加されます。';
+    $('avatar-history').replaceChildren(...entries.map(entry => {
+      const item = document.createElement('li');
+      const select = document.createElement('button'); select.className = 'avatar-history-select';
+      select.disabled = !!session || pending > 0; select.setAttribute('aria-pressed', String(entry.id === selectedAvatarId));
+      const name = document.createElement('span'); name.textContent = entry.name;
+      const detail = document.createElement('small'); detail.textContent = `${(entry.size / 1048576).toFixed(1)} MiB${entry.id === selectedAvatarId ? ' · 選択中' : ''}`;
+      select.append(name, detail);
+      select.onclick = () => {
+        if (session || pending) return;
+        void busy('履歴からアバターを読み込み中…', async () => {
+          const bytes = await readAvatar(entry.id);
+          if (!await world.loadAvatar(bytes)) return;
+          avatarBytes = bytes; selectedAvatarId = entry.id;
+          $('avatar-name').textContent = entry.name; $('avatar-detail').textContent = 'VRM · ローカル'; $('default-avatar').hidden = false;
+          notify('保存したアバターに変更しました。');
+        });
+      };
+      const remove = document.createElement('button'); remove.className = 'text-button'; remove.textContent = '削除';
+      remove.setAttribute('aria-label', `${entry.name}を履歴から削除`);
+      remove.disabled = pending > 0;
+      remove.onclick = async () => {
+        remove.disabled = true;
+        try { await deleteAvatar(entry.id); if (selectedAvatarId === entry.id) selectedAvatarId = undefined; await refreshAvatarHistory(); notify('履歴から削除しました。元のVRMファイルは残ります。'); }
+        catch { remove.disabled = false; notify('履歴を削除できませんでした。', true); }
+      };
+      item.append(select, remove); return item;
+    }));
+  } catch { $('avatar-history-status').textContent = 'この環境では履歴を利用できません。VRMファイルからは読み込めます。'; }
+}
 async function busy(message: string, job: () => Promise<void>) {
-  pending++; $('loading').hidden = false; $('loading-text').textContent = message;
+  pending++; for (const button of document.querySelectorAll<HTMLButtonElement>('#avatar-history button')) button.disabled = true; $('loading').hidden = false; $('loading-text').textContent = message;
   try { await job(); } catch (error) { notify(error instanceof Error ? error.message : '読み込みに失敗しました。', true); }
-  finally { if (--pending === 0) $('loading').hidden = true; }
+  finally { if (--pending === 0) { $('loading').hidden = true; void refreshAvatarHistory(); } }
 }
 async function showRoom(bytes: ArrayBuffer, sample?: string) {
   const meta = await world.loadRoom(bytes);
@@ -158,6 +196,7 @@ $('toast-close').onclick = () => { $('toast').hidden = true; };
 const settings = $<HTMLDialogElement>('settings-dialog');
 const settingsTabs = [...settings.querySelectorAll<HTMLButtonElement>('[role=tab]')];
 function selectSettings(tab: string) {
+  if (tab === 'avatar') void refreshAvatarHistory();
   for (const button of settingsTabs) {
     const selected = button.id === `tab-${tab}`;
     button.setAttribute('aria-selected', String(selected)); button.tabIndex = selected ? 0 : -1;
@@ -218,7 +257,8 @@ try {
 
   $('reset-position').onclick = () => { world.resetPosition(); world.focus(); notify('出現位置に戻りました。'); };
   $('default-avatar').onclick = () => {
-    if (session) return;
+    if (session || pending) return;
+    selectedAvatarId = undefined; void refreshAvatarHistory();
     avatarBytes = undefined; world.useDefaultAvatar(); $('avatar-name').textContent = '旅人'; $('avatar-detail').textContent = '標準アバター'; $('default-avatar').hidden = true;
     notify('標準アバターに戻しました。');
   };
@@ -227,13 +267,15 @@ try {
     void busy('ルームを検証しています…', async () => { await showRoom(await readFile(file, '.vroom')); notify('ルームを読み込みました。'); });
   });
   $('avatar-file').addEventListener('change', () => {
-    const file = $<HTMLInputElement>('avatar-file').files?.[0]; if (!file || session) return;
+    const file = $<HTMLInputElement>('avatar-file').files?.[0]; if (!file || session || pending) return;
     void busy('アバターを読み込み中…', async () => {
       const bytes = await readFile(file, '.vrm');
       if (!await world.loadAvatar(bytes)) return;
       avatarBytes = bytes;
       $('avatar-name').textContent = file.name.replace(/\.vrm$/i, ''); $('avatar-detail').textContent = 'VRM · ローカル'; $('default-avatar').hidden = false;
-      notify('アバターを変更しました。3D画面をクリックして歩いてみましょう。');
+      selectedAvatarId = undefined;
+      try { selectedAvatarId = await saveAvatar(file.name.replace(/\.vrm$/i, ''), bytes); notify('アバターを変更し、この端末の履歴に保存しました。'); }
+      catch { notify('アバターは変更しましたが、履歴に保存できませんでした。保存容量やブラウザの設定を確認してください。', true); }
     });
   });
   for (const button of document.querySelectorAll<HTMLButtonElement>('[data-move]')) {
@@ -264,6 +306,7 @@ try {
 }
 
 function lockAssets(locked: boolean) {
+  void refreshAvatarHistory();
   for (const button of document.querySelectorAll<HTMLButtonElement>('[data-sample]')) button.disabled = locked;
   for (const id of ['open-room', 'starter-room', 'open-avatar', 'default-avatar', 'create-room', 'join-room']) $<HTMLButtonElement>(id).disabled = locked;
 }
