@@ -1,0 +1,39 @@
+services:
+  signaling:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 8080
+      ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:-https://openvroom.com,null,file://}"
+      TURN_HOST: "${TURN_HOST:?Set TURN_HOST}"
+      TURN_SECRET: "${TURN_SECRET:?Set TURN_SECRET}"
+      RELAY_ONLY: "${RELAY_ONLY:-0}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    pids_limit: 64
+    logging:
+      driver: json-file
+      options: { max-size: "2m", max-file: "2" }
+  turn:
+    image: coturn/coturn@sha256:bbefd3e1fdfdc0d58770fe01b581fd8b00d9f3a5580d00acb77cf719a6bc78e3
+    network_mode: host
+    restart: unless-stopped
+    command: ["-c", "/etc/coturn/turnserver.conf"]
+    volumes:
+      - ./turnserver.local.conf:/etc/coturn/turnserver.conf:ro
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    pids_limit: 64
+    logging:
+      driver: json-file
+      options: { max-size: "2m", max-file: "2" }

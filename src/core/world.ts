@@ -4,6 +4,9 @@ import { VRMLoaderPlugin, VRMUtils, type VRM } from '@pixiv/three-vrm';
 import { validateAsset, type RoomMetadata } from './format';
 import { groundHeight, intersectsPlayer, movePlayer } from './physics';
 import { AvatarLocomotion, loadMotionLibrary, type MotionState } from './locomotion';
+import type { Pose } from '../network/protocol';
+
+interface RemotePlayer { group: THREE.Group; fallback: THREE.Group; target?: Pose; avatar?: VRM; root?: THREE.Group; locomotion?: AvatarLocomotion; phase: number; lastPose: number; }
 
 export interface WorldStats { x: number; y: number; z: number; fps: number; moving: boolean; motion: MotionState; speed: number }
 export class World {
@@ -11,6 +14,9 @@ export class World {
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(48, 1, 0.05, 250);
   readonly player = new THREE.Group();
+  private remotes = new Map<string, RemotePlayer>();
+  private networkSpeed = 0;
+  private networkRunning = false;
   private room?: THREE.Group;
   private avatar?: VRM;
   private avatarRoot?: THREE.Group;
@@ -187,11 +193,19 @@ export class World {
 
   async loadAvatar(bytes: ArrayBuffer): Promise<boolean> {
     const request = ++this.avatarRequest;
+    const { avatar, root, locomotion } = await this.createAvatar(bytes);
+    if (request !== this.avatarRequest || this.disposed) { locomotion.dispose(); this.disposeObject(root); return false; }
+    this.clearAvatar(); this.locomotion = locomotion; this.player.add(root);
+    avatar.scene.traverse(object => { if (object instanceof THREE.Mesh) object.castShadow = true; });
+    this.avatar = avatar; this.avatarRoot = root; this.fallback.visible = false;
+    avatar.update(0); this.player.updateMatrixWorld(true); avatar.springBoneManager?.reset();
+    return true;
+  }
+
+  private async createAvatar(bytes: ArrayBuffer) {
     validateAsset(bytes, 'avatar');
     const library = await loadMotionLibrary();
-    if (request !== this.avatarRequest || this.disposed) return false;
     const gltf = await this.loader(true).parseAsync(bytes, '');
-    if (request !== this.avatarRequest || this.disposed) { this.disposeGltf(gltf); return false; }
     const avatar: VRM | undefined = gltf.userData.vrm;
     if (!avatar) { this.disposeGltf(gltf); throw new Error('VRMのHumanoidを読み取れませんでした。'); }
     VRMUtils.rotateVRM0(avatar);
@@ -208,11 +222,66 @@ export class World {
     let locomotion: AvatarLocomotion;
     try { locomotion = new AvatarLocomotion(avatar, library); }
     catch (error) { this.disposeGltf(gltf); throw error; }
-    this.clearAvatar(); this.locomotion = locomotion; this.player.add(root);
     avatar.scene.traverse(object => { if (object instanceof THREE.Mesh) object.castShadow = true; });
-    this.avatar = avatar; this.avatarRoot = root; this.fallback.visible = false;
-    avatar.update(0); this.player.updateMatrixWorld(true); avatar.springBoneManager?.reset();
-    return true;
+    return { avatar, root, locomotion };
+  }
+
+  networkPose(): Pose {
+    return { x: this.player.position.x, y: this.player.position.y, z: this.player.position.z, yaw: this.player.rotation.y, speed: this.networkSpeed, running: this.networkRunning };
+  }
+  addRemote(id: string, name: string): void {
+    if (this.remotes.has(id) || this.remotes.size >= 5) return;
+    const group = new THREE.Group(), fallback = this.makeFallback();
+    group.add(fallback); group.visible = false;
+    const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 80;
+    const ctx = canvas.getContext('2d')!;
+    ctx.font = '28px sans-serif'; canvas.width = Math.min(512, Math.max(96, Math.ceil(ctx.measureText(name).width) + 40));
+    ctx.fillStyle = '#17252ddd'; ctx.roundRect(0, 0, canvas.width, 80, 28); ctx.fill();
+    ctx.fillStyle = '#ffffff'; ctx.font = '28px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(name, canvas.width / 2, 40, canvas.width - 24);
+    const texture = new THREE.CanvasTexture(canvas);
+    const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false }));
+    label.position.y = 2.08; label.scale.set(canvas.width / 285, 0.28, 1); group.add(label);
+    this.scene.add(group);
+    this.remotes.set(id, { group, fallback, phase: 0, lastPose: 0 });
+  }
+  async loadRemoteAvatar(id: string, bytes: ArrayBuffer): Promise<void> {
+    const remote = this.remotes.get(id); if (!remote) return;
+    const { avatar, root, locomotion } = await this.createAvatar(bytes);
+    if (this.disposed || this.remotes.get(id) !== remote) { locomotion.dispose(); this.disposeObject(root); return; }
+    remote.avatar = avatar; remote.root = root; remote.locomotion = locomotion;
+    remote.group.add(root); remote.fallback.visible = false;
+    avatar.update(0); remote.group.updateMatrixWorld(true); avatar.springBoneManager?.reset();
+  }
+  updateRemote(id: string, pose: Pose): void {
+    const remote = this.remotes.get(id); if (!remote) return;
+    if (!remote.target || remote.group.position.distanceTo(new THREE.Vector3(pose.x, pose.y, pose.z)) > 5) {
+      remote.group.position.set(pose.x, pose.y, pose.z); remote.group.rotation.y = pose.yaw;
+    }
+    remote.target = pose; remote.lastPose = performance.now(); remote.group.visible = true;
+  }
+  removeRemote(id: string): void {
+    const remote = this.remotes.get(id); if (!remote) return;
+    this.remotes.delete(id); remote.locomotion?.dispose(); this.scene.remove(remote.group);
+    for (const child of remote.group.children) if (child instanceof THREE.Sprite) { child.material.map?.dispose(); child.material.dispose(); }
+    this.disposeObject(remote.group);
+  }
+  private animateRemotes(dt: number): void {
+    for (const remote of this.remotes.values()) {
+      const target = remote.target; if (!target) continue;
+      const alpha = 1 - Math.exp(-15 * dt);
+      remote.group.position.lerp(new THREE.Vector3(target.x, target.y, target.z), alpha);
+      const diff = Math.atan2(Math.sin(target.yaw - remote.group.rotation.y), Math.cos(target.yaw - remote.group.rotation.y));
+      remote.group.rotation.y += diff * alpha;
+      const speed = performance.now() - remote.lastPose > 1000 ? 0 : target.speed;
+      if (remote.avatar) {
+        const steps = Math.max(1, Math.ceil(dt * 60));
+        for (let i = 0; i < steps; i++) { remote.locomotion?.update(dt / steps, speed, target.running); remote.avatar.update(dt / steps); }
+      } else {
+        remote.phase += dt * (target.running ? 13 : 9);
+        const stride = Math.sin(remote.phase) * 0.45 * Math.min(1, speed / 1.4);
+        for (const [name, sign] of [['leftLeg', -1], ['rightLeg', 1], ['leftArm', 1], ['rightArm', -1]] as const) remote.fallback.getObjectByName(name)!.rotation.x = stride * sign;
+      }
+    }
   }
 
   private disposeObject(root: THREE.Object3D): void {
@@ -315,9 +384,12 @@ export class World {
       }
       this.mixer?.update(dt); this.updateCamera(1 - Math.exp(-12 * dt));
     }
+    this.networkSpeed = actualSpeed; this.networkRunning = running;
+    this.animateRemotes(dt);
     this.renderer.render(this.scene, this.camera);
     if (time - this.lastStats > 500) {
       this.onStats?.({ ...this.player.position, fps: Math.round(this.frameCount * 1000 / (time - this.lastStats)), moving, motion: this.locomotion?.state ?? (moving ? running ? 'run' : 'walk' : 'idle'), speed: actualSpeed });
+      this.container.dataset.remotes = JSON.stringify([...this.remotes].map(([id, remote]) => ({ id, x: remote.group.position.x, z: remote.group.position.z, avatar: !!remote.avatar, visible: remote.group.visible })));
       this.lastStats = time; this.frameCount = 0;
     }
   }
@@ -325,6 +397,7 @@ export class World {
   dispose(): void {
     this.disposed = true; ++this.roomRequest; ++this.avatarRequest;
     this.renderer.setAnimationLoop(null); this.controller.abort(); this.resizeObserver.disconnect();
+    for (const id of [...this.remotes.keys()]) this.removeRemote(id);
     this.mixer?.stopAllAction(); this.clearAvatar();
     this.disposeObject(this.scene); this.renderer.dispose(); this.renderer.domElement.remove();
   }

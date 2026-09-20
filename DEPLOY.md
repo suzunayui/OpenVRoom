@@ -5,11 +5,12 @@
 - 公式ホームページ: https://openvroom.com/
 - Webアプリ: https://openvroom.com/room/
 - VPS: Ubuntu 24.04。SSHの接続先は手元の設定で管理します。
-- Web配信: Nginx。現在の版は静的ファイルのみで、サーバー上のNode.jsは不要。
+- Web配信: Nginx。サイト本体は静的ファイル。Signaling / TURNはDocker Composeで起動します。ホストOSへのNode.js導入は不要です。
 - TLS: Let's Encrypt / Certbot、`certbot.timer`による自動更新。
 - `http://openvroom.com` はHTTPSへ、`/room` は `/room/` へリダイレクト。
 - `www.openvroom.com` はDNS未設定のため使用していない。
-- Signaling / TURN / マルチプレイ用のサーバーはこの段階では未導入。
+- Signaling: `127.0.0.1:8080`、Nginxの `/room/signal` からWebSocket転送。
+- TURN: 3478 TCP/UDP、49160–50159 UDP。秘密鍵と設定は `/opt/openvroom/` 内のみ。
 
 ## 公開用ビルド
 
@@ -75,3 +76,36 @@ sudo certbot renew --dry-run
 `scripts/test-public-site.ts` はPC/モバイル表示、画像読み込み、FAQ、`/room/` への遷移、標準アバター、VRM読み込みと歩行、ホームへの戻り、不要な外部通信や個人用アセット要求がないことを確認します。
 
 本番ではHTTP→HTTPS、`/room`→`/room/`、存在しないページの404、個人用VRM URLが404であることも確認しています。
+
+
+## マルチプレイサーバー
+
+UbuntuホストにDocker EngineとComposeを用意し、`compose.yaml`、`server/`、`src/network/protocol.ts`、`.dockerignore`、`deploy/setup-multiplayer.sh` を `/opt/openvroom/` に配置します。ホストのNginx・TLSは既存構成を使用します。
+
+```sh
+sudo sh /opt/openvroom/deploy/setup-multiplayer.sh
+```
+
+初回実行時にサーバー内だけでランダムなTURN秘密情報を作り、`.env` に保存します。再実行でも同じ秘密情報を保ちます。スクリプトは既存HTTPS設定を保持したままWebSocketのlocationを追加します。`/opt/openvroom` はrootのみが参照できます。通常更新でも同じスクリプトを使いますが、進行中のセッションはSignaling再起動で終了します。
+
+外部ファイアウォールでも3478 TCP/UDPと49160–50159 UDPを許可してください。8080を外部へ公開する必要はありません。現在の構成はLinuxのホストネットワークを使用します。TURNの待受・中継アドレスはデフォルト経路のIPv4です。NAT配下ではcoturnのexternal-ipを別途設定してください。
+
+`.env.example` は設定項目の見本です。実際の `.env`、`turnserver.local.conf` はGit管理・公開ビルド対象外です。Composeのイメージはdigestで固定しています。
+
+```sh
+sudo docker compose --project-directory /opt/openvroom ps
+curl --fail http://127.0.0.1:8080/health
+```
+
+通信内容やVRM・ルームはサーバーに保存しません。招待トークンはURLフラグメントに入れ、HTTPアクセスログへ送られません。Signaling経路のアクセスログとTURNの接続ログは無効です。TURN資格情報は入室者にのみ発行し、8時間で失効します。ルームは最大6時間です。直接接続が可能な場合はWebRTCで直接通信し、失敗時に暗号化された通信をTURN経由で中継します。TURNはTLS/443待受を提供しないため、厳しい企業ネットワーク等で接続できない場合があります。
+
+位置は毎秒20回ホスト経由で同期します。ルームはホストから、VRMは共有を選んだ参加者からそれぞれ直接送信します。16 KiBごとの転送・バックプレッシャー・SHA-256照合・既存の形式検証・サイズ上限・タイムアウトを適用します。共有アセットの途中変更とホスト移譲は未対応です。
+
+ブラウザ3セッションの検証:
+
+```powershell
+npx tsx scripts/test-multiplayer.ts https://openvroom.com/room/
+npx tsx scripts/test-multiplayer.ts https://openvroom.com/room/ --relay
+```
+
+`--relay` はテスト用ブラウザだけでTURN経由を強制し、実際に選ばれた接続経路を確認します。本番設定は変更しません。

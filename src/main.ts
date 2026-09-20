@@ -2,6 +2,8 @@ import './style.css';
 import { World } from './core/world';
 import { MAX_ASSET_BYTES } from './core/format';
 import localAvatar from 'virtual:local-avatar';
+import { RoomSession } from './network/session';
+import { displayName, inviteToken } from './network/protocol';
 
 const icons = {
   cube: '<path d="m12 3 9 5v8l-9 5-9-5V8l9-5Zm0 9 9-4M12 12 3 8m9 4v9M7.5 5.5l9 5"/>',
@@ -21,7 +23,7 @@ function icon(name: keyof typeof icons) { return `<svg viewBox="0 0 24 24" fill=
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <header class="topbar">
     <a class="brand" href="./" aria-label="OpenVRoom ホーム"><span class="brand-mark">${icon('cube')}</span>Open<span>VRoom</span><small>EARLY ACCESS</small></a>
-    <div class="top-right"><span class="local-badge"><i></i>ローカルセッション</span><button class="icon-button" id="help-button" aria-label="操作ガイド">${icon('help')}</button></div>
+    <div class="top-right"><button class="text-button" id="online-button">友だちと遊ぶ</button><span class="local-badge" id="session-badge"><i></i><span id="session-label">ローカルセッション</span></span><button class="icon-button" id="help-button" aria-label="操作ガイド">${icon('help')}</button></div>
   </header>
   <main class="workspace">
     <aside class="sidebar">
@@ -29,7 +31,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <section class="room-panel">
         <div class="section-heading"><h2>ルーム</h2><span class="tiny-label">01 / LOCAL</span></div>
         <div class="room-card"><div class="room-art" aria-hidden="true"><div class="art-window"></div><div class="art-sofa"></div><div class="art-table"></div><span>STARTER ROOM</span></div>
-          <div class="room-card-body"><div class="room-title-line"><span class="status-dot"></span><h3 id="room-title">ルームを準備中…</h3></div><p id="room-author">by OpenVRoom</p><div class="tags"><span>.vroom</span><span>1人用プレビュー</span></div></div>
+          <div class="room-card-body"><div class="room-title-line"><span class="status-dot"></span><h3 id="room-title">ルームを準備中…</h3></div><p id="room-author">by OpenVRoom</p><div class="tags"><span>.vroom</span><span>最大6人で参加</span></div></div>
         </div>
         <button class="primary-button" id="open-room">${icon('folder')}ルームを開く<span class="button-end">${icon('arrow')}</span></button>
         <div class="room-actions"><button class="text-button" id="starter-room">${icon('home')}サンプルに戻す</button><a class="text-button" href="./starter-room.vroom" download="starter-room.vroom" aria-label="サンプルルームを保存">${icon('download')}保存</a></div>
@@ -38,9 +40,29 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <div class="avatar-current"><div class="avatar-symbol">${icon('person')}</div><div><h3 id="avatar-name">旅人</h3><p id="avatar-detail">標準アバター</p></div><span class="selected-check">${icon('check')}</span></div>
         <button class="secondary-button" id="open-avatar">${icon('upload')}VRMを読み込む</button>
         <button class="text-button default-avatar" id="default-avatar" hidden>標準アバターに戻す</button>
-        <p class="privacy-note">${icon('lock')}ファイルはこの端末内で読み込みます。</p>
+        <p class="privacy-note">${icon('lock')}共有を選ぶまで、この端末内で読み込みます。</p>
       </section>
-      <div class="sidebar-footer"><span class="version">OPENVROOM <b>v0.1</b></span><p>まずは、ここから。<br>つながる機能はこれから。</p></div>
+      <section class="multiplayer-panel" aria-label="みんなで遊ぶ">
+        <div class="section-heading"><h2>みんなで遊ぶ</h2><span class="tiny-label" id="member-count">最大6人</span></div>
+        <div id="session-entry">
+          <label class="field-label" for="player-name">表示名</label><input id="player-name" maxlength="24" value="旅人" autocomplete="off" />
+          <label class="share-choice"><input id="share-avatar" type="checkbox" />選択中のVRMを参加者に共有する</label>
+          <p class="session-note">オフなら相手には標準アバターで表示されます。共有できるVRMを選んでください。</p>
+          <button class="primary-button" id="create-room">ルームを作って招待</button>
+          <label class="field-label" for="invite-input">招待リンク</label><input id="invite-input" type="text" placeholder="招待リンクを貼り付け" autocomplete="off" spellcheck="false" />
+          <button class="secondary-button" id="join-room">招待されたルームに参加</button>
+          <p class="session-note">入室すると位置を共有します。作成時は今のルームも参加者に送ります。マイクは使いません。</p>
+        </div>
+        <div id="session-active" hidden>
+          <p id="session-status" role="status">接続中…</p>
+          <label class="field-label" for="invite-link">友だちに送るリンク</label><input id="invite-link" readonly aria-label="友だちに送るリンク" />
+          <button class="secondary-button" id="copy-invite">招待リンクをコピー</button>
+          <ul id="member-list" aria-label="参加者"></ul>
+          <button class="secondary-button" id="leave-room">退出する</button>
+          <p class="session-note">ホストが退出すると終了します。着替え・ルーム変更は退出後にできます。</p>
+        </div>
+      </section>
+      <div class="sidebar-footer"><span class="version">OPENVROOM <b>v0.1</b></span><p>招待リンクで、<br>同じ居場所へ。</p></div>
     </aside>
     <section class="stage" aria-label="ルームプレビュー">
       <div id="viewport">
@@ -56,7 +78,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <input type="file" id="room-file" accept=".vroom" hidden />
   <input type="file" id="avatar-file" accept=".vrm" hidden />
   <div class="toast" id="toast" role="status" hidden><span id="toast-message"></span><button id="toast-close" aria-label="通知を閉じる">${icon('close')}</button></div>
-  <dialog id="help-dialog"><div class="dialog-heading"><span class="eyebrow">QUICK GUIDE</span><button class="icon-button" id="close-help" aria-label="ガイドを閉じる">${icon('close')}</button></div><h2>この空間で、できること。</h2><p>サンプルルームを歩いたり、お手持ちのVRM 0.x / 1.0アバターに着替えたりできます。</p><dl><div><dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / 矢印</dt><dd>移動</dd></div><div><dt><kbd>Shift</kbd> + 移動</dt><dd>走る</dd></div><div><dt>ドラッグ / スクロール</dt><dd>視点 / ズーム</dd></div><div><dt><kbd>R</kbd></dt><dd>出現位置に戻る</dd></div></dl><p class="dialog-note">3D画面をクリックするとキー操作が有効になります。ファイルは64 MiBまで。現在は一人用です。招待・音声・WebXRはまだ利用できません。</p><button class="primary-button" id="start-exploring">歩いてみる ${icon('arrow')}</button></dialog>
+  <dialog id="help-dialog"><div class="dialog-heading"><span class="eyebrow">QUICK GUIDE</span><button class="icon-button" id="close-help" aria-label="ガイドを閉じる">${icon('close')}</button></div><h2>この空間で、できること。</h2><p>サンプルルームを歩いたり、お手持ちのVRM 0.x / 1.0アバターに着替えたりできます。</p><dl><div><dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / 矢印</dt><dd>移動</dd></div><div><dt><kbd>Shift</kbd> + 移動</dt><dd>走る</dd></div><div><dt>ドラッグ / スクロール</dt><dd>視点 / ズーム</dd></div><div><dt><kbd>R</kbd></dt><dd>出現位置に戻る</dd></div></dl><p class="dialog-note">3D画面をクリックするとキー操作が有効になります。ファイルは64 MiBまで。招待リンクで最大6人が参加できます。VRM共有は入室前に選択できます。音声・WebXRはまだ利用できません。</p><button class="primary-button" id="start-exploring">歩いてみる ${icon('arrow')}</button></dialog>
 `;
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -66,6 +88,11 @@ if (import.meta.env.MODE === 'public') {
 }
 let world: World;
 let pending = 0;
+let roomBytes: ArrayBuffer | undefined;
+let avatarBytes: ArrayBuffer | undefined;
+let session: RoomSession | undefined;
+let sessionTimer: ReturnType<typeof setInterval> | undefined;
+let sessionRestoring = false;
 let toastTimer: ReturnType<typeof setTimeout>;
 function notify(message: string, error = false) {
   clearTimeout(toastTimer); $('toast-message').textContent = message;
@@ -82,7 +109,8 @@ async function showRoom(bytes: ArrayBuffer) {
   if (!meta) return;
   $('room-title').textContent = meta.title; $('scene-title').textContent = meta.title;
   $('room-author').textContent = `by ${meta.author}`; $('room-description').textContent = meta.description;
-  $('status-text').textContent = '探索中 · この端末のみ';
+  roomBytes = bytes;
+  if (!session) $('status-text').textContent = '探索中 · この端末のみ';
 }
 async function starter() {
   await busy('ルームを読み込み中…', async () => {
@@ -118,17 +146,20 @@ try {
   $('starter-room').onclick = () => void starter();
   $('reset-position').onclick = () => { world.resetPosition(); world.focus(); notify('出現位置に戻りました。'); };
   $('default-avatar').onclick = () => {
-    world.useDefaultAvatar(); $('avatar-name').textContent = '旅人'; $('avatar-detail').textContent = '標準アバター'; $('default-avatar').hidden = true;
+    if (session) return;
+    avatarBytes = undefined; world.useDefaultAvatar(); $('avatar-name').textContent = '旅人'; $('avatar-detail').textContent = '標準アバター'; $('default-avatar').hidden = true;
     notify('標準アバターに戻しました。');
   };
   $('room-file').addEventListener('change', () => {
-    const file = $<HTMLInputElement>('room-file').files?.[0]; if (!file) return;
+    const file = $<HTMLInputElement>('room-file').files?.[0]; if (!file || session) return;
     void busy('ルームを検証しています…', async () => { await showRoom(await readFile(file, '.vroom')); notify('ルームを読み込みました。'); });
   });
   $('avatar-file').addEventListener('change', () => {
-    const file = $<HTMLInputElement>('avatar-file').files?.[0]; if (!file) return;
+    const file = $<HTMLInputElement>('avatar-file').files?.[0]; if (!file || session) return;
     void busy('アバターを読み込み中…', async () => {
-      if (!await world.loadAvatar(await readFile(file, '.vrm'))) return;
+      const bytes = await readFile(file, '.vrm');
+      if (!await world.loadAvatar(bytes)) return;
+      avatarBytes = bytes;
       $('avatar-name').textContent = file.name.replace(/\.vrm$/i, ''); $('avatar-detail').textContent = 'VRM · ローカル'; $('default-avatar').hidden = false;
       notify('アバターを変更しました。3D画面をクリックして歩いてみましょう。');
     });
@@ -138,14 +169,16 @@ try {
     const stop = () => world.setMovement(button.dataset.move!, false);
     button.addEventListener('pointerup', stop); button.addEventListener('pointercancel', stop); button.addEventListener('lostpointercapture', stop);
   }
-  window.addEventListener('pagehide', () => world.dispose(), { once: true });
+  window.addEventListener('pagehide', () => { session?.close(); world.dispose(); }, { once: true });
   await starter();
   if (localAvatar) {
     const config = localAvatar;
     await busy('あなたのアバターを読み込み中…', async () => {
     const response = await fetch(config.url);
     if (!response.ok) throw new Error('設定されたアバターを読み込めませんでした。');
-    if (await world.loadAvatar(await response.arrayBuffer())) {
+    const bytes = await response.arrayBuffer();
+    if (await world.loadAvatar(bytes)) {
+      avatarBytes = bytes;
       $('avatar-name').textContent = config.name;
       $('avatar-detail').textContent = 'VRM · ローカル';
       $('default-avatar').hidden = false;
@@ -156,4 +189,95 @@ try {
   $('loading').hidden = true; $('status-text').textContent = '3D描画を開始できません';
   for (const id of ['open-room', 'open-avatar', 'starter-room', 'reset-position']) $<HTMLButtonElement>(id).disabled = true;
   notify(`3D描画を開始できません。WebGL 2対応のブラウザで開いてください。${error instanceof Error ? error.message : ''}`, true);
+}
+
+function lockAssets(locked: boolean) {
+  for (const id of ['open-room', 'starter-room', 'open-avatar', 'default-avatar', 'create-room', 'join-room']) $<HTMLButtonElement>(id).disabled = locked;
+}
+function readInvitation(value: string): string {
+  let token = value.trim();
+  if (token.includes('#')) token = new URLSearchParams(token.slice(token.indexOf('#') + 1)).get('invite') ?? '';
+  const parsed = inviteToken.safeParse(token);
+  if (!parsed.success) throw new Error('有効な招待リンクを貼り付けてください。');
+  return parsed.data;
+}
+function enterSession(join: boolean) {
+  if (session || pending || sessionRestoring || !roomBytes) return;
+  const parsed = displayName.safeParse($<HTMLInputElement>('player-name').value);
+  if (!parsed.success) { notify('表示名を1〜24文字で入力してください（記号 < > や改行は使えません）。', true); return; }
+  let token: string | undefined;
+  try { token = join ? readInvitation($<HTMLInputElement>('invite-input').value) : undefined; }
+  catch (error) { notify((error as Error).message, true); return; }
+  const originalRoom = roomBytes;
+  const members = new Set<string>();
+  const sharedAvatar = $<HTMLInputElement>('share-avatar').checked ? avatarBytes : undefined;
+  if (avatarBytes) $('avatar-detail').textContent = sharedAvatar ? 'VRM · 参加者に共有' : 'VRM · 自分のみ';
+  lockAssets(true);
+  $('session-entry').hidden = true; $('session-active').hidden = false;
+  $('session-status').textContent = '接続中…'; $('session-label').textContent = 'オンライン接続中';
+  $('member-list').replaceChildren(); $<HTMLInputElement>('invite-link').value = '';
+  $('status-text').textContent = '接続中…';
+  const current = new RoomSession({ room: originalRoom, avatar: sharedAvatar }, {
+    room: async bytes => { if (session === current) await showRoom(bytes); },
+    avatar: async (id, bytes) => { if (session === current) await world.loadRemoteAvatar(id, bytes); },
+    members: (list, self, host, ready) => {
+      if (session !== current) return;
+      for (const member of list) if (member.id !== self) { world.addRemote(member.id, member.name); members.add(member.id); }
+      $('member-list').replaceChildren(...list.map(member => {
+        const li = document.createElement('li'); li.dataset.memberId = member.id;
+        li.textContent = `${member.name}${member.id === self ? '（あなた）' : ''}${member.id === host ? ' · ホスト' : ''} · ${ready.has(member.id) ? '参加中' : '準備中'}`;
+        return li;
+      }));
+      $('member-count').textContent = `${list.length} / 6人`;
+      $('session-label').textContent = `オンライン · ${ready.size}人`;
+      $('status-text').textContent = ready.has(self) ? `みんなで探索中 · ${ready.size}人` : 'ルームを受信中…';
+      if (self === host) $('session-status').textContent = ready.size > 1 ? '同じルームでつながっています。' : '招待リンクを送って、友だちを待ちましょう。';
+      $('leave-room').textContent = self === host ? 'ルームを終了する' : '退出する';
+    },
+    pose: (id, pose) => { if (session === current) world.updateRemote(id, pose); },
+    remove: id => { world.removeRemote(id); members.delete(id); },
+    status: message => { if (session === current) $('session-status').textContent = message; },
+    invitation: value => {
+      const url = new URL(location.protocol === 'file:' ? 'https://openvroom.com/room/' : location.href);
+      url.search = ''; url.hash = `invite=${value}`;
+      $<HTMLInputElement>('invite-link').value = url.href;
+    },
+    closed: reason => {
+      if (session !== current) return;
+      session = undefined; clearInterval(sessionTimer);
+      for (const id of members) world.removeRemote(id);
+      $('session-active').hidden = true; $('session-entry').hidden = false;
+      $('session-label').textContent = 'ローカルセッション'; $('member-count').textContent = '最大6人';
+      $('member-list').replaceChildren(); $<HTMLInputElement>('invite-link').value = '';
+      $('status-text').textContent = '探索中 · この端末のみ';
+      if (avatarBytes) $('avatar-detail').textContent = 'VRM · ローカル';
+      sessionRestoring = true;
+      void (async () => {
+        try { if (join) await showRoom(originalRoom); }
+        catch { notify('元のルームを復元できませんでした。サンプルに戻してください。', true); }
+        finally { sessionRestoring = false; lockAssets(false); }
+      })();
+      notify(reason);
+    },
+  });
+  session = current;
+  try { current.connect(parsed.data, token); sessionTimer = setInterval(() => current.update(world.networkPose()), 50); }
+  catch { current.close('通信を開始できませんでした。WebRTC対応ブラウザで再試行してください。'); }
+}
+$('create-room').onclick = () => enterSession(false);
+$('join-room').onclick = () => enterSession(true);
+$('online-button').onclick = () => {
+  document.querySelector('.multiplayer-panel')!.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  (session ? $('leave-room') : $('player-name')).focus({ preventScroll: true });
+};
+$('leave-room').onclick = () => session?.close();
+$('copy-invite').onclick = async () => {
+  const input = $<HTMLInputElement>('invite-link'); if (!input.value) return;
+  try { await navigator.clipboard.writeText(input.value); notify('招待リンクをコピーしました。友だちに送ってください。'); }
+  catch { input.focus(); input.select(); notify('リンクを選択しました。コピーして送ってください。'); }
+};
+if (location.hash.startsWith('#invite=')) {
+  $<HTMLInputElement>('invite-input').value = location.href;
+  $('join-room').scrollIntoView({ block: 'nearest' });
+  notify('招待されています。表示名とVRM共有を確認して「参加」を押してください。');
 }

@@ -6,3 +6,8 @@
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}.spinner{animation-duration:2s}}
 
 #viewport canvas{position:absolute;inset:0}
+
+.multiplayer-panel{border-top:1px solid #303b47;padding-top:22px;margin-top:22px}.field-label{display:block;font-size:12px;color:#b7c6cc;margin:14px 0 7px}.multiplayer-panel input:not([type=checkbox]){width:100%;min-width:0;background:#131c24;color:#edf5f2;border:1px solid #43515d;border-radius:8px;padding:10px;font:inherit;font-size:13px}.share-choice{display:flex;align-items:flex-start;gap:8px;font-size:12px;line-height:1.6;margin-top:14px}.share-choice input{accent-color:#c4e1ba;margin-top:3px}.session-note{font-size:11px;line-height:1.7;color:#a0b1bb;margin:10px 0 14px}.multiplayer-panel .secondary-button{margin-top:10px}#session-status{font-size:13px;line-height:1.7;color:#c4e1ba}#member-list{list-style:none;padding:0;margin:15px 0}#member-list li{padding:8px 0;border-bottom:1px solid #303b47;font-size:12px;overflow-wrap:anywhere}button:disabled{opacity:.5;cursor:not-allowed}.sidebar{overflow-y:auto}#session-badge{white-space:nowrap}
+
+@media(min-width:701px){.workspace{height:calc(100dvh - 78px);min-height:0}.sidebar{min-height:0}.stage{min-height:0}}
+@media(max-width:700px){.multiplayer-panel{grid-column:1/-1;margin-top:0}.top-right #session-badge{display:none}#online-button{font-size:11px}}

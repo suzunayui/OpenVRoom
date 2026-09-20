@@ -7,7 +7,7 @@ await cp('website', 'web-dist', { recursive: true });
 await cp('public/starter-room.vroom', 'web-dist/room/starter-room.vroom');
 await cp('public/motions', 'web-dist/room/motions', { recursive: true });
 const roomHtml = (await readFile('web-dist/room/index.html', 'utf8'))
-  .replace(' ws://127.0.0.1:5173', '')
+  .replace(' ws://127.0.0.1:5173 ws://127.0.0.1:5180', '')
   .replace('</head>', '<link rel="canonical" href="https://openvroom.com/room/"><link rel="icon" href="/favicon.svg"><meta name="description" content="VRMアバターで3Dルームを歩く、OpenVRoomのブラウザプレビュー。アカウント不要で体験できます。"></head>');
 await writeFile('web-dist/room/index.html', roomHtml);
 await mkdir('web-dist/room/assets', { recursive: true });

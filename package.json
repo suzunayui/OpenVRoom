@@ -17,7 +17,8 @@
     "generate:motions": "tsx scripts/prepare-motions.ts",
     "vroom": "tsx scripts/vroom.ts",
     "desktop": "npm run build && electron .",
-    "desktop:pack": "npm run build && electron-builder --win dir --config.electronDist=node_modules/electron/dist"
+    "desktop:pack": "npm run build && electron-builder --win dir --config.electronDist=node_modules/electron/dist",
+    "server": "tsx server/main.ts"
   },
   "main": "electron/main.cjs",
   "build": {
@@ -39,12 +40,14 @@
   "dependencies": {
     "@pixiv/three-vrm": "^3.5.5",
     "three": "^0.186.0",
+    "ws": "^8.21.3",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
     "@types/node": "^26.6.2",
     "@types/three": "^0.186.0",
+    "@types/ws": "^8.18.1",
     "electron": "^44.4.3",
     "electron-builder": "^26.15.3",
     "gltf-validator": "^2.0.0-dev.3.10",
