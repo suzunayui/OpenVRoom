@@ -13,8 +13,8 @@ export const signalPayload = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('candidate'), candidate }).strict(),
 ]);
 export const clientMessage = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('create'), name: displayName }).strict(),
-  z.object({ type: z.literal('join'), name: displayName, token: inviteToken }).strict(),
+  z.object({ type: z.literal('create'), version: z.literal(2), name: displayName }).strict(),
+  z.object({ type: z.literal('join'), version: z.literal(2), name: displayName, token: inviteToken }).strict(),
   z.object({ type: z.literal('signal'), to: memberId, payload: signalPayload }).strict(),
   z.object({ type: z.literal('kick'), id: memberId }).strict(),
 ]);
@@ -35,6 +35,7 @@ export const peerMessage = z.discriminatedUnion('type', [
   z.object({ type: z.literal('asset-end') }).strict(),
   z.object({ type: z.literal('asset-ack'), kind: z.enum(['room', 'avatar']) }).strict(),
   z.object({ type: z.literal('ready') }).strict(),
+  z.object({ type: z.literal('voice'), enabled: z.boolean() }).strict(),
   z.object({ type: z.literal('pose'), pose: poseSchema }).strict(),
   z.object({ type: z.literal('poses'), poses: z.array(z.object({ id: memberId, pose: poseSchema }).strict()).max(MAX_MEMBERS) }).strict(),
 ]);

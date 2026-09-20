@@ -1,13 +1,16 @@
 import { _electron as electron, chromium, expect } from '@playwright/test';
 import { testVrm } from '../tests/fixtures';
 import { existsSync, readFileSync } from 'node:fs';
+import { testAudioFile } from '../tests/audio-fixture';
 
 const environment: Record<string, string> = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined));
 environment.OPENVROOM_HEADLESS = '1';
 delete environment.ELECTRON_RUN_AS_NODE;
+const voiceArgs = process.argv.includes('--voice') ? ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--mute-audio', `--use-file-for-fake-audio-capture=${await testAudioFile()}`] : [];
 const app = await electron.launch({
   ...(process.argv[2] && !process.argv[2].startsWith('--') ? { executablePath: process.argv[2] } : {}),
-  args: [...(process.argv[2] && !process.argv[2].startsWith('--') ? [] : ['.']), '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--force-device-scale-factor=1'],
+  // Keep Electron's actual permission handlers active; only the hardware is fake.
+  args: [...(process.argv[2] && !process.argv[2].startsWith('--') ? [] : ['.']), '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--force-device-scale-factor=1', ...voiceArgs.filter(arg => arg !== '--use-fake-ui-for-media-stream')],
   env: environment,
 });
 try {
@@ -33,7 +36,7 @@ try {
     await page.locator('#share-avatar').check();
     await page.locator('#create-room').click();
     await expect(page.locator('#invite-link')).toHaveValue(/https:\/\/openvroom.com\/room\/#invite=/, { timeout: 20000 });
-    const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+    const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', ...voiceArgs] });
     try {
       const guest = await browser.newPage();
       await guest.goto(await page.locator('#invite-link').inputValue());
@@ -41,6 +44,21 @@ try {
       await guest.locator('#join-room').click();
       await expect(guest.locator('#status-text')).toHaveText('みんなで探索中 · 2人', { timeout: 45000 });
       await expect.poll(async () => JSON.parse(await guest.locator('#viewport').getAttribute('data-remotes') ?? '[]').some((p: { avatar: boolean; visible: boolean }) => p.avatar && p.visible), { timeout: 30000 }).toBe(true);
+      if (process.argv.includes('--voice')) {
+        await expect(page.locator('#mic-toggle')).toHaveAttribute('aria-pressed', 'false');
+        await page.locator('#refresh-mics').click();
+        await expect.poll(() => page.locator('#mic-device option').count()).toBeGreaterThan(1);
+        const device = await page.locator('#mic-device option').nth(1).getAttribute('value');
+        await page.locator('#mic-device').selectOption(device!);
+        await page.locator('#mic-toggle').click();
+        await expect(page.locator('#mic-toggle')).toHaveAttribute('aria-pressed', 'true');
+        await expect.poll(async () => Number(await guest.locator('[data-voice-enabled=true]').first().getAttribute('data-voice-level')), { timeout: 30000 }).toBeGreaterThan(0.02);
+        await guest.locator('#mic-toggle').click();
+        await expect.poll(async () => Number(await page.locator('[data-voice-enabled=true]').first().getAttribute('data-voice-level')), { timeout: 30000 }).toBeGreaterThan(0.02);
+        await page.locator('#mic-toggle').click();
+        await expect(guest.locator('[data-voice-enabled=true]')).toHaveCount(0);
+        console.log('PASS: Windows microphone selection and bidirectional Web voice using synthetic audio');
+      }
       await page.locator('#leave-room').click();
       await expect(guest.locator('#session-entry')).toBeVisible({ timeout: 15000 });
       await expect(page.locator('#session-entry')).toBeVisible();

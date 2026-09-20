@@ -53,7 +53,11 @@ export function createSignaling(options: { origins: string[]; turnSecret?: strin
         const time = Date.now(); client.budget = Math.min(120, client.budget + (time - client.refill) * 0.04); client.refill = time;
         if (binary || --client.budget < 0) { ws.close(1008, 'Rate limit'); return; }
         try {
-          const msg = clientMessage.parse(JSON.parse(raw.toString()));
+          const parsed = JSON.parse(raw.toString());
+          if ((parsed?.type === 'create' || parsed?.type === 'join') && parsed.version !== 2) {
+            send(client, { type: 'error', message: 'アプリを更新してください。ブラウザは再読み込み、Windows版は最新版を起動してください。' }); ws.close(1008); return;
+          }
+          const msg = clientMessage.parse(parsed);
           if (msg.type === 'kick') {
             const room = client.room;
             if (room?.host !== client.id || msg.id === client.id) throw new Error();

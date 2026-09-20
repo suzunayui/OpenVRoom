@@ -84,7 +84,10 @@ if 'location = /room/signal' not in s:
 
     location = /room {''')
     s = s.replace("connect-src 'self' blob:;", "connect-src 'self' blob: wss://openvroom.com;")
-    p.write_text(s)
+s = s.replace('microphone=()', 'microphone=(self)')
+if "media-src 'self' blob:;" not in s:
+    s = s.replace("worker-src 'self' blob:;", "media-src 'self' blob:; worker-src 'self' blob:;")
+p.write_text(s)
 PY
 nginx -t
 systemctl reload nginx

@@ -109,3 +109,17 @@ npx tsx scripts/test-multiplayer.ts https://openvroom.com/room/ --relay
 ```
 
 `--relay` はテスト用ブラウザだけでTURN経由を強制し、実際に選ばれた接続経路を確認します。本番設定は変更しません。
+
+
+## 音声通話の配信設定
+
+Signalingの接続プロトコルはv2です。古いクライアントには更新を案内します。サーバーとWebアプリは同じリリースで更新してください。`setup-multiplayer.sh` はNginxのPermissions-Policyを `microphone=(self)` に変更し、CSPに `media-src 'self' blob:` を追加します。カメラは許可しません。
+
+音声は既存の参加者間WebRTC接続に予約した音声トラックで送ります。マイクの開始や切り替えは `replaceTrack` を使い、ファイル共有や位置同期を切断しません。Signalingサーバーに音声を送らず、TURNも音声を録音・保存しません。新しいポートを開ける必要はありません。
+
+```powershell
+npx tsx scripts/test-voice.ts http://127.0.0.1:5180/
+npx tsx scripts/test-voice.ts https://openvroom.com/room/ --relay
+```
+
+テストは生成した合成音とブラウザの仮想マイクだけを使用します。実際のマイク音を取得・録音しません。マイク初期オフ、明示したdeviceId、通話中の切り替え、受信音声のエネルギー、拒否・切断・退出後の後始末を検証します。

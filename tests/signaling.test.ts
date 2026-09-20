@@ -21,26 +21,26 @@ test('rooms enforce capacity, isolate signaling, remove guests and end with the 
     } };
   }
   try {
-    const host = await connect(); host.ws.send(JSON.stringify({ type: 'create', name: 'Host' }));
+    const host = await connect(); host.ws.send(JSON.stringify({ type: 'create', version: 2, name: 'Host' }));
     const welcome = await host.next('welcome'); assert.match(welcome.token, /^[\w-]{32}$/);
     assert.equal(welcome.iceServers.length, 2); assert.ok(welcome.iceServers[1].credential);
     const guests = [];
-    for (let i = 0; i < 5; i++) { const guest = await connect(); guest.ws.send(JSON.stringify({ type: 'join', name: `Guest ${i}`, token: welcome.token })); await guest.next('welcome'); guests.push(guest); }
-    const overflow = await connect(); overflow.ws.send(JSON.stringify({ type: 'join', name: 'Overflow', token: welcome.token }));
+    for (let i = 0; i < 5; i++) { const guest = await connect(); guest.ws.send(JSON.stringify({ type: 'join', version: 2, name: `Guest ${i}`, token: welcome.token })); await guest.next('welcome'); guests.push(guest); }
+    const overflow = await connect(); overflow.ws.send(JSON.stringify({ type: 'join', version: 2, name: 'Overflow', token: welcome.token }));
     assert.match((await overflow.next('error')).message, /満員/);
-    const outsider = await connect(); outsider.ws.send(JSON.stringify({ type: 'create', name: 'Other room' }));
+    const outsider = await connect(); outsider.ws.send(JSON.stringify({ type: 'create', version: 2, name: 'Other room' }));
     await outsider.next('welcome');
     const signal = { type: 'signal', to: welcome.self, payload: { kind: 'description', description: { type: 'offer', sdp: 'test' } } };
     outsider.ws.send(JSON.stringify(signal)); await new Promise(r => setTimeout(r, 50)); assert.equal(host.queue.some(x => x.type === 'signal'), false);
     guests[0].ws.send(JSON.stringify(signal)); assert.equal((await host.next('signal')).payload.description.sdp, 'test');
     const departed = once(guests[0].ws, 'close'); guests[0].ws.close(); await departed;
-    const replacement = await connect(); replacement.ws.send(JSON.stringify({ type: 'join', name: 'Replacement', token: welcome.token })); assert.equal((await replacement.next('welcome')).members.length, 6);
+    const replacement = await connect(); replacement.ws.send(JSON.stringify({ type: 'join', version: 2, name: 'Replacement', token: welcome.token })); assert.equal((await replacement.next('welcome')).members.length, 6);
     const memberList = host.queue.filter(x => x.type === 'members').at(-1).members;
     const kicked = memberList.find((m: { name: string }) => m.name === 'Guest 1');
     host.ws.send(JSON.stringify({ type: 'kick', id: kicked.id }));
     assert.match((await guests[1].next('closed')).reason, /接続/);
     host.ws.close(); assert.match((await replacement.next('closed')).reason, /ホスト/);
-    const expired = await connect(); expired.ws.send(JSON.stringify({ type: 'join', name: 'Expired', token: welcome.token })); assert.match((await expired.next('error')).message, /終了/);
+    const expired = await connect(); expired.ws.send(JSON.stringify({ type: 'join', version: 2, name: 'Expired', token: welcome.token })); assert.match((await expired.next('error')).message, /終了/);
   } finally { for (const socket of sockets) socket.terminate(); await server.close(); }
 });
 
@@ -53,6 +53,9 @@ test('rejects untrusted origins, malformed messages, and oversized transfer decl
   try {
     const forbidden = new WebSocket(url, { origin: 'https://untrusted.example' });
     await once(forbidden, 'error');
+    const outdated = new WebSocket(url, { origin: 'http://localhost' }); await once(outdated, 'open');
+    const reply = once(outdated, 'message'); outdated.send(JSON.stringify({ type: 'create', name: 'Old client' }));
+    assert.match(JSON.parse(String((await reply)[0])).message, /更新/);
     const malformed = new WebSocket(url, { origin: 'http://localhost' }); await once(malformed, 'open');
     const closed = once(malformed, 'close'); malformed.send('{bad'); assert.equal((await closed)[0], 1008);
   } finally { await server.close(); }

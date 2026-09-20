@@ -4,6 +4,7 @@ import { MAX_ASSET_BYTES } from './core/format';
 import localAvatar from 'virtual:local-avatar';
 import { RoomSession } from './network/session';
 import { displayName, inviteToken } from './network/protocol';
+import { VoiceController, type VoiceState, type VoiceLevels } from './audio/voice';
 
 const icons = {
   cube: '<path d="m12 3 9 5v8l-9 5-9-5V8l9-5Zm0 9 9-4M12 12 3 8m9 4v9M7.5 5.5l9 5"/>',
@@ -51,12 +52,23 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <button class="primary-button" id="create-room">ルームを作って招待</button>
           <label class="field-label" for="invite-input">招待リンク</label><input id="invite-input" type="text" placeholder="招待リンクを貼り付け" autocomplete="off" spellcheck="false" />
           <button class="secondary-button" id="join-room">招待されたルームに参加</button>
-          <p class="session-note">入室すると位置を共有します。作成時は今のルームも参加者に送ります。マイクは使いません。</p>
+          <p class="session-note">入室すると位置を共有します。作成時は今のルームも参加者に送ります。マイクは入室時オフです。</p>
         </div>
         <div id="session-active" hidden>
           <p id="session-status" role="status">接続中…</p>
           <label class="field-label" for="invite-link">友だちに送るリンク</label><input id="invite-link" readonly aria-label="友だちに送るリンク" />
           <button class="secondary-button" id="copy-invite">招待リンクをコピー</button>
+          <div class="voice-controls" id="voice-controls">
+            <h3>音声通話</h3>
+            <button class="secondary-button" id="mic-toggle" aria-pressed="false" disabled>マイクをオン</button>
+            <p id="mic-status" role="status">マイクはオフです</p>
+            <label class="field-label" for="mic-device">使用するマイク</label>
+            <select id="mic-device"><option value="">システム既定のマイク</option></select>
+            <button class="text-button" id="refresh-mics">マイク一覧を取得</button>
+            <label class="field-label" for="mic-level">入力レベル</label><meter id="mic-level" min="0" max="1" value="0" aria-label="マイク入力レベル"></meter>
+            <button class="secondary-button" id="resume-audio" hidden>音声の再生を有効にする</button>
+            <p class="session-note">初回はマイクの許可が必要です。一覧取得だけでは送信しません。声は距離に応じて聞こえます。録音はしません。</p>
+          </div>
           <ul id="member-list" aria-label="参加者"></ul>
           <button class="secondary-button" id="leave-room">退出する</button>
           <p class="session-note">ホストが退出すると終了します。着替え・ルーム変更は退出後にできます。</p>
@@ -78,7 +90,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <input type="file" id="room-file" accept=".vroom" hidden />
   <input type="file" id="avatar-file" accept=".vrm" hidden />
   <div class="toast" id="toast" role="status" hidden><span id="toast-message"></span><button id="toast-close" aria-label="通知を閉じる">${icon('close')}</button></div>
-  <dialog id="help-dialog"><div class="dialog-heading"><span class="eyebrow">QUICK GUIDE</span><button class="icon-button" id="close-help" aria-label="ガイドを閉じる">${icon('close')}</button></div><h2>この空間で、できること。</h2><p>サンプルルームを歩いたり、お手持ちのVRM 0.x / 1.0アバターに着替えたりできます。</p><dl><div><dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / 矢印</dt><dd>移動</dd></div><div><dt><kbd>Shift</kbd> + 移動</dt><dd>走る</dd></div><div><dt>ドラッグ / スクロール</dt><dd>視点 / ズーム</dd></div><div><dt><kbd>R</kbd></dt><dd>出現位置に戻る</dd></div></dl><p class="dialog-note">3D画面をクリックするとキー操作が有効になります。ファイルは64 MiBまで。招待リンクで最大6人が参加できます。VRM共有は入室前に選択できます。音声・WebXRはまだ利用できません。</p><button class="primary-button" id="start-exploring">歩いてみる ${icon('arrow')}</button></dialog>
+  <dialog id="help-dialog"><div class="dialog-heading"><span class="eyebrow">QUICK GUIDE</span><button class="icon-button" id="close-help" aria-label="ガイドを閉じる">${icon('close')}</button></div><h2>この空間で、できること。</h2><p>サンプルルームを歩いたり、お手持ちのVRM 0.x / 1.0アバターに着替えたりできます。</p><dl><div><dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / 矢印</dt><dd>移動</dd></div><div><dt><kbd>Shift</kbd> + 移動</dt><dd>走る</dd></div><div><dt>ドラッグ / スクロール</dt><dd>視点 / ズーム</dd></div><div><dt><kbd>R</kbd></dt><dd>出現位置に戻る</dd></div></dl><p class="dialog-note">3D画面をクリックするとキー操作が有効になります。ファイルは64 MiBまで。招待リンクで最大6人が参加できます。VRM共有は入室前に選択できます。音声通話は入室後にマイクをオンにすると使えます。WebXRはまだ利用できません。</p><button class="primary-button" id="start-exploring">歩いてみる ${icon('arrow')}</button></dialog>
 `;
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -91,6 +103,7 @@ let pending = 0;
 let roomBytes: ArrayBuffer | undefined;
 let avatarBytes: ArrayBuffer | undefined;
 let session: RoomSession | undefined;
+let voice: VoiceController | undefined;
 let sessionTimer: ReturnType<typeof setInterval> | undefined;
 let sessionRestoring = false;
 let toastTimer: ReturnType<typeof setTimeout>;
@@ -210,6 +223,20 @@ function enterSession(join: boolean) {
   catch (error) { notify((error as Error).message, true); return; }
   const originalRoom = roomBytes;
   const members = new Set<string>();
+  let selfId = '';
+  function voiceLevels(levels: VoiceLevels) {
+    $<HTMLMeterElement>('mic-level').value = levels.local;
+    const own = document.querySelector<HTMLElement>(`[data-member-id="${selfId}"] .talk-state`);
+    if (own) { own.textContent = $('mic-toggle').getAttribute('aria-pressed') === 'true' ? levels.local > 0.03 ? '発話中' : 'マイクON' : 'マイクOFF'; own.dataset.speaking = String(levels.local > 0.03); }
+    for (const peer of levels.peers) {
+      const row = document.querySelector<HTMLElement>(`[data-member-id="${peer.id}"]`);
+      if (!row) continue;
+      row.dataset.voiceEnabled = String(peer.enabled); row.dataset.voiceLevel = peer.level.toFixed(3);
+      const label = row.querySelector<HTMLElement>('.talk-state')!;
+      label.textContent = peer.muted ? '消音中' : !peer.enabled ? 'マイクOFF' : peer.level > 0.03 ? '発話中' : 'マイクON';
+      label.dataset.speaking = String(peer.level > 0.03 && !peer.muted);
+    }
+  }
   const sharedAvatar = $<HTMLInputElement>('share-avatar').checked ? avatarBytes : undefined;
   if (avatarBytes) $('avatar-detail').textContent = sharedAvatar ? 'VRM · 参加者に共有' : 'VRM · 自分のみ';
   lockAssets(true);
@@ -218,14 +245,29 @@ function enterSession(join: boolean) {
   $('member-list').replaceChildren(); $<HTMLInputElement>('invite-link').value = '';
   $('status-text').textContent = '接続中…';
   const current = new RoomSession({ room: originalRoom, avatar: sharedAvatar }, {
+    audio: (id, track) => { if (session === current) voice?.addTrack(id, track); else track.stop(); },
+    voice: (id, enabled) => { if (session === current) voice?.setEnabled(id, enabled); },
     room: async bytes => { if (session === current) await showRoom(bytes); },
     avatar: async (id, bytes) => { if (session === current) await world.loadRemoteAvatar(id, bytes); },
     members: (list, self, host, ready) => {
       if (session !== current) return;
-      for (const member of list) if (member.id !== self) { world.addRemote(member.id, member.name); members.add(member.id); }
+      selfId = self; voice?.setReady(ready.has(self));
+      for (const member of list) if (member.id !== self) { world.addRemote(member.id, member.name); members.add(member.id); voice?.setPeerReady(member.id, ready.has(member.id)); }
       $('member-list').replaceChildren(...list.map(member => {
         const li = document.createElement('li'); li.dataset.memberId = member.id;
-        li.textContent = `${member.name}${member.id === self ? '（あなた）' : ''}${member.id === host ? ' · ホスト' : ''} · ${ready.has(member.id) ? '参加中' : '準備中'}`;
+        const name = document.createElement('span');
+        name.textContent = `${member.name}${member.id === self ? '（あなた）' : ''}${member.id === host ? ' · ホスト' : ''} · ${ready.has(member.id) ? '参加中' : '準備中'}`;
+        const talking = document.createElement('span'); talking.className = 'talk-state'; talking.textContent = 'マイクOFF';
+        li.append(name, talking);
+        if (member.id !== self) {
+          const controls = document.createElement('div'); controls.className = 'voice-member-controls';
+          const mute = document.createElement('button'); mute.className = 'text-button'; mute.textContent = '消音'; mute.setAttribute('aria-label', `${member.name}をミュート`); mute.setAttribute('aria-pressed', String(voice?.isMuted(member.id) ?? false));
+          mute.onclick = () => { const muted = !(voice?.isMuted(member.id) ?? false); voice?.setMuted(member.id, muted); mute.setAttribute('aria-pressed', String(muted)); };
+          const volume = document.createElement('input'); volume.type = 'range'; volume.min = '0'; volume.max = '200'; volume.step = '5'; volume.value = String((voice?.volume(member.id) ?? 1) * 100); volume.setAttribute('aria-label', `${member.name}の音量`);
+          const value = document.createElement('output'); value.textContent = `${volume.value}%`;
+          volume.oninput = () => { voice?.setVolume(member.id, Number(volume.value) / 100); value.textContent = `${volume.value}%`; };
+          controls.append(mute, volume, value); li.append(controls);
+        }
         return li;
       }));
       $('member-count').textContent = `${list.length} / 6人`;
@@ -234,8 +276,8 @@ function enterSession(join: boolean) {
       if (self === host) $('session-status').textContent = ready.size > 1 ? '同じルームでつながっています。' : '招待リンクを送って、友だちを待ちましょう。';
       $('leave-room').textContent = self === host ? 'ルームを終了する' : '退出する';
     },
-    pose: (id, pose) => { if (session === current) world.updateRemote(id, pose); },
-    remove: id => { world.removeRemote(id); members.delete(id); },
+    pose: (id, pose) => { if (session === current) { world.updateRemote(id, pose); voice?.positionPeer(id, pose); } },
+    remove: id => { world.removeRemote(id); voice?.remove(id); members.delete(id); },
     status: message => { if (session === current) $('session-status').textContent = message; },
     invitation: value => {
       const url = new URL(location.protocol === 'file:' ? 'https://openvroom.com/room/' : location.href);
@@ -245,6 +287,8 @@ function enterSession(join: boolean) {
     closed: reason => {
       if (session !== current) return;
       session = undefined; clearInterval(sessionTimer);
+      voice?.dispose(); voice = undefined; $<HTMLMeterElement>('mic-level').value = 0;
+      renderVoice({ enabled: false, busy: false, ready: false, selected: '', devices: [], playbackBlocked: false });
       for (const id of members) world.removeRemote(id);
       $('session-active').hidden = true; $('session-entry').hidden = false;
       $('session-label').textContent = 'ローカルセッション'; $('member-count').textContent = '最大6人';
@@ -261,7 +305,14 @@ function enterSession(join: boolean) {
     },
   });
   session = current;
-  try { current.connect(parsed.data, token); sessionTimer = setInterval(() => current.update(world.networkPose()), 50); }
+  try {
+    voice = new VoiceController(track => current.setVoiceTrack(track), state => { if (session === current) renderVoice(state); }, levels => { if (session === current) voiceLevels(levels); }, message => notify(message, true));
+    void voice.resume();
+  } catch { notify('音声の初期化に失敗しました。マイクはオフのまま入室します。', true); }
+  try { current.connect(parsed.data, token); sessionTimer = setInterval(() => {
+    const pose = world.networkPose(); current.update(pose);
+    voice?.positionListener(pose, world.audioForward());
+  }, 50); }
   catch { current.close('通信を開始できませんでした。WebRTC対応ブラウザで再試行してください。'); }
 }
 $('create-room').onclick = () => enterSession(false);
@@ -281,3 +332,27 @@ if (location.hash.startsWith('#invite=')) {
   $('join-room').scrollIntoView({ block: 'nearest' });
   notify('招待されています。表示名とVRM共有を確認して「参加」を押してください。');
 }
+
+function renderVoice(state: VoiceState) {
+  const toggle = $<HTMLButtonElement>('mic-toggle');
+  toggle.disabled = !state.ready; toggle.setAttribute('aria-pressed', String(state.enabled));
+  toggle.textContent = state.busy ? 'マイクの操作をキャンセル' : state.enabled ? 'マイクをオフ' : 'マイクをオン';
+  $('mic-status').textContent = state.busy ? 'マイクの許可・接続を確認中…' : state.enabled ? 'マイクON · 参加者に送信しています' : 'マイクはオフです';
+  const select = $<HTMLSelectElement>('mic-device'); select.disabled = state.busy;
+  const devices = [{ id: '', label: 'システム既定のマイク' }, ...state.devices];
+  if (state.selected && !devices.some(d => d.id === state.selected)) devices.push({ id: state.selected, label: '選択したマイク（未接続）' });
+  const signature = JSON.stringify(devices);
+  if (select.dataset.options !== signature) {
+    select.replaceChildren(...devices.map(d => { const option = document.createElement('option'); option.value = d.id; option.textContent = d.label; return option; }));
+    select.dataset.options = signature;
+  }
+  select.value = state.selected;
+  $('resume-audio').hidden = !state.playbackBlocked;
+}
+$('mic-toggle').onclick = () => voice?.toggleMic();
+$('mic-device').onchange = () => { void voice?.selectDevice($<HTMLSelectElement>('mic-device').value); };
+$('refresh-mics').onclick = async () => {
+  const button = $<HTMLButtonElement>('refresh-mics'); button.disabled = true;
+  try { await voice?.refreshDevices(true); } finally { button.disabled = false; }
+};
+$('resume-audio').onclick = () => { void voice?.resume(); };

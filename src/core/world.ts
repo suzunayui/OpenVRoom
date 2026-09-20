@@ -229,6 +229,7 @@ export class World {
   networkPose(): Pose {
     return { x: this.player.position.x, y: this.player.position.y, z: this.player.position.z, yaw: this.player.rotation.y, speed: this.networkSpeed, running: this.networkRunning };
   }
+  audioForward() { return this.camera.getWorldDirection(new THREE.Vector3()); }
   addRemote(id: string, name: string): void {
     if (this.remotes.has(id) || this.remotes.size >= 5) return;
     const group = new THREE.Group(), fallback = this.makeFallback();

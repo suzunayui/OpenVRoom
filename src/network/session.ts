@@ -1,6 +1,7 @@
 import { MAX_TRANSFER, peerMessage, serverMessage, type Member, type Pose, type Signal } from './protocol';
 
 interface Peer {
+  audioSender?: RTCRtpSender;
   id: string; pc: RTCPeerConnection; data?: RTCDataChannel; poses?: RTCDataChannel;
   candidates: RTCIceCandidateInit[]; incoming: Promise<void>; signaling: Promise<void>;
   receiving?: { kind: 'room' | 'avatar'; buffer: Uint8Array; offset: number; hash: string; started: number };
@@ -9,6 +10,8 @@ interface Peer {
   ack?: { kind: 'room' | 'avatar'; resolve: () => void; reject: () => void };
 }
 export interface SessionEvents {
+  audio: (id: string, track: MediaStreamTrack) => void;
+  voice: (id: string, enabled: boolean) => void;
   room: (bytes: ArrayBuffer) => Promise<void>;
   avatar: (id: string, bytes: ArrayBuffer) => Promise<void>;
   members: (members: Member[], self: string, host: string, ready: Set<string>) => void;
@@ -38,6 +41,8 @@ export class RoomSession {
   private timer?: ReturnType<typeof setInterval>;
   private roomHash?: Promise<string>; private avatarHash?: Promise<string>;
   private started = Date.now();
+  private audioTrack: MediaStreamTrack | null = null;
+  private audioQueue: Promise<void> = Promise.resolve();
   constructor(private assets: { room: ArrayBuffer; avatar?: ArrayBuffer }, private events: SessionEvents) {}
 
   connect(name: string, token?: string) {
@@ -45,7 +50,7 @@ export class RoomSession {
     this.roomHash = token ? undefined : digest(this.assets.room);
     this.avatarHash = this.assets.avatar ? digest(this.assets.avatar) : undefined;
     const ws = this.ws = new WebSocket(signalingUrl());
-    ws.onopen = () => ws.send(JSON.stringify(token ? { type: 'join', name, token } : { type: 'create', name }));
+    ws.onopen = () => ws.send(JSON.stringify(token ? { type: 'join', version: 2, name, token } : { type: 'create', version: 2, name }));
     ws.onmessage = event => {
       try {
         if (typeof event.data !== 'string' || event.data.length > 20000) throw new Error();
@@ -91,10 +96,16 @@ export class RoomSession {
       pc.onicecandidate = event => { if (event.candidate) this.sendSignal(peer.id, { kind: 'candidate', candidate: { ...event.candidate.toJSON(), candidate: event.candidate.candidate } }); };
       pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed') this.failPeer(peer, '相手との通信が切れました。入室し直してください。'); };
       pc.ondatachannel = event => this.channel(peer, event.channel);
+      pc.ontrack = event => {
+        if (event.track.kind !== 'audio' || this.stopped || this.peers.get(peer.id) !== peer) { event.track.stop(); return; }
+        this.events.audio(peer.id, event.track);
+      };
       if (this.self < peer.id) {
         this.channel(peer, pc.createDataChannel('assets'));
         this.channel(peer, pc.createDataChannel('poses', { ordered: false, maxRetransmits: 0 }));
         peer.signaling = peer.signaling.then(async () => {
+          pc.addTransceiver('audio', { direction: 'sendrecv' });
+          await this.configureAudio(peer);
           await pc.setLocalDescription(await pc.createOffer());
           this.sendSignal(peer.id, { kind: 'description', description: { type: 'offer', sdp: pc.localDescription!.sdp } });
         }).catch(() => this.failPeer(peer, '接続の準備に失敗しました。'));
@@ -111,6 +122,7 @@ export class RoomSession {
     await peer.pc.setRemoteDescription(payload.description);
     for (const candidate of peer.candidates.splice(0)) await peer.pc.addIceCandidate(candidate);
     if (payload.description.type === 'offer') {
+      await this.configureAudio(peer);
       await peer.pc.setLocalDescription(await peer.pc.createAnswer());
       this.sendSignal(peer.id, { kind: 'description', description: { type: 'answer', sdp: peer.pc.localDescription!.sdp } });
     }
@@ -137,7 +149,7 @@ export class RoomSession {
       return;
     }
     peer.data = channel;
-    channel.onopen = () => { peer.opened = true; this.send(peer, { type: 'hello' }); if (this.ready) this.send(peer, { type: 'ready' }); };
+    channel.onopen = () => { peer.opened = true; this.send(peer, { type: 'hello' }); this.send(peer, { type: 'voice', enabled: !!this.audioTrack }); if (this.ready) this.send(peer, { type: 'ready' }); };
     channel.onclose = () => { setTimeout(() => { if (!this.stopped && this.peers.get(peer.id) === peer) this.failPeer(peer, '相手との通信が切れました。'); }, 1500); };
     channel.onmessage = event => {
       const data = event.data;
@@ -172,6 +184,8 @@ export class RoomSession {
       void this.share(peer).catch(() => this.failPeer(peer, '共有ファイルを送信できませんでした。'));
     } else if (msg.type === 'ready') {
       peer.ready = true; this.emitMembers();
+    } else if (msg.type === 'voice') {
+      this.events.voice(peer.id, msg.enabled);
     } else if (msg.type === 'asset-ack') {
       if (peer.ack?.kind !== msg.kind) throw new Error();
       peer.ack.resolve(); peer.ack = undefined;
@@ -218,6 +232,30 @@ export class RoomSession {
     });
   }
   private send(peer: Peer, value: unknown) { if (peer.data?.readyState === 'open') peer.data.send(JSON.stringify(value)); }
+  private async configureAudio(peer: Peer) {
+    const audio = peer.pc.getTransceivers().find(t => t.receiver.track.kind === 'audio');
+    if (!audio) return;
+    audio.direction = 'sendrecv'; peer.audioSender = audio.sender;
+    await audio.sender.replaceTrack(this.audioTrack);
+  }
+  setVoiceTrack(track: MediaStreamTrack | null): Promise<void> {
+    if (this.stopped) return Promise.resolve();
+    const previous = this.audioTrack; this.audioTrack = track;
+    const job = this.audioQueue.catch(() => {}).then(async () => {
+      if (this.stopped || this.audioTrack !== track) return;
+      try {
+        await Promise.all([...this.peers.values()].map(peer => peer.audioSender?.replaceTrack(track)));
+        if (!this.stopped && this.audioTrack === track) for (const peer of this.peers.values()) this.send(peer, { type: 'voice', enabled: !!track });
+      } catch (error) {
+        if (this.audioTrack === track && track) {
+          this.audioTrack = previous?.readyState === 'live' ? previous : null;
+          await Promise.allSettled([...this.peers.values()].map(peer => peer.audioSender?.replaceTrack(this.audioTrack)));
+        }
+        throw error;
+      }
+    });
+    this.audioQueue = job; return job;
+  }
   update(pose: Pose) {
     if (!this.self || !this.ready || this.stopped) return;
     if (this.self === this.host) {
@@ -244,6 +282,7 @@ export class RoomSession {
   close(reason = '退出しました。') {
     if (this.stopped) return;
     this.stopped = true; clearInterval(this.timer); this.ws?.close();
+    this.audioTrack = null;
     for (const peer of [...this.peers.values()]) this.removePeer(peer);
     this.poses.clear(); this.assets = { room: new ArrayBuffer(0) }; this.roster = [];
     this.events.closed(reason);

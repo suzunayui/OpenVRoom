@@ -1,8 +1,16 @@
 const { app, BrowserWindow, session } = require('electron');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 
 app.whenReady().then(() => {
-  session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+  const trustedUrl = pathToFileURL(path.join(__dirname, '../dist/index.html')).href;
+  const trusted = contents => contents && contents.getURL().split('#')[0] === trustedUrl;
+  session.defaultSession.setPermissionRequestHandler((contents, permission, callback, details) => {
+    callback(!!(trusted(contents) && permission === 'media' && details.isMainFrame !== false && details.mediaTypes?.length && details.mediaTypes.every(type => type === 'audio')));
+  });
+  session.defaultSession.setPermissionCheckHandler((contents, permission, _origin, details) => {
+    return !!(trusted(contents) && permission === 'media' && details.isMainFrame !== false && details.mediaType === 'audio');
+  });
   const window = new BrowserWindow({
     show: process.env.OPENVROOM_HEADLESS !== '1',
     width: 1440, height: 960, minWidth: 840, minHeight: 640,

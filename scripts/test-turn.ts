@@ -10,7 +10,7 @@ try {
     try {
       const config = await new Promise<RTCConfiguration>((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error('Signaling timeout')), 10000);
-        ws.onopen = () => ws.send(JSON.stringify({ type: 'create', name: '接続テスト' }));
+        ws.onopen = () => ws.send(JSON.stringify({ type: 'create', version: 2, name: '接続テスト' }));
         ws.onmessage = event => { const data = JSON.parse(event.data); if (data.type === 'welcome') { clearTimeout(timer); resolve({ iceServers: data.iceServers, iceTransportPolicy: 'relay' }); } };
       });
       const a = new RTCPeerConnection(config), b = new RTCPeerConnection(config); pcs.push(a, b);
