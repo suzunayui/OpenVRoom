@@ -9,7 +9,7 @@ export interface MotionClip {
 export interface MotionLibrary { version: number; sourceHipsHeight: number; clips: Record<MotionState, MotionClip> }
 let libraryPromise: Promise<MotionLibrary> | undefined;
 export function loadMotionLibrary(): Promise<MotionLibrary> {
-  return libraryPromise ??= fetch('./motions/locomotion.json').then(async response => {
+  return libraryPromise ??= fetch('./motions/locomotion.json?v=2').then(async response => {
     if (!response.ok) throw new Error('歩行モーションを読み込めませんでした。');
     const library = await response.json() as MotionLibrary;
     if (library.version !== 1 || !library.clips?.idle || !library.clips.walk || !library.clips.run) throw new Error('歩行モーションの形式が不正です。');

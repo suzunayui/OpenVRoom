@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { AnimationClip, AnimationMixer, Group, InterpolateDiscrete, Object3D, Quaternion, QuaternionKeyframeTrack, Vector3, VectorKeyframeTrack } from 'three';
+import { AnimationClip, AnimationMixer, Euler, Group, InterpolateDiscrete, Object3D, Quaternion, QuaternionKeyframeTrack, Vector3, VectorKeyframeTrack } from 'three';
 
 // CC0 Quaternius Universal Animation Library (Standard), pinned download.
 const base = 'https://raw.githubusercontent.com/J-Ponzo/gltf-universal-animation-library/e24c23cf2a1323488a3faa226ea7ea21f644b73e/';
@@ -68,25 +68,43 @@ const result: any = { version: 1, author: 'Quaternius', sourceHipsHeight: restHi
 const round = (value: number) => Number(value.toFixed(6));
 for (const [name, source] of Object.entries({ idle: 'Idle_Loop', walk: 'Walk_Loop', run: 'Jog_Fwd_Loop' })) {
   const clip = sourceClip(source); const action = mixer.clipAction(clip).play();
-  const frames = Math.round(clip.duration * 30);
+  const duration = name === 'idle' ? 4.5 : clip.duration;
+  const frames = Math.round(duration * 30);
   const rotations: Record<string, number[]> = Object.fromEntries(mapped.map((bone: any) => [bone.name, []]));
   const hipsPositions: number[] = []; const times: number[] = [];
   let minFootZ = Infinity, maxFootZ = -Infinity;
   for (let frame = 0; frame <= frames; frame++) {
     const time = frame === frames ? 0 : clip.duration * frame / frames;
     mixer.setTime(time); root.updateMatrixWorld(true);
-    times.push(round(clip.duration * frame / frames));
-    for (const { name, object } of mapped) {
-      const rotation = object.getWorldQuaternion(new Quaternion()).multiply(rest.get(name)!);
-      rotations[name].push(...rotation.toArray().map(round));
-      if (name === 'leftFoot') { const z = object.getWorldPosition(new Vector3()).z; minFootZ = Math.min(minFootZ, z); maxFootZ = Math.max(maxFootZ, z); }
+    times.push(round(duration * frame / frames));
+    for (const { name: boneName, object } of mapped) {
+      const rotation = object.getWorldQuaternion(new Quaternion()).multiply(rest.get(boneName)!);
+      if (name === 'idle') {
+        // Gentle asymmetric upper-body pose in source world axes (+Z forward).
+        // Apply the same delta to descendants so parent changes do not get cancelled.
+        const phase = 2 * Math.PI * (frame === frames ? 0 : frame / frames);
+        const arm = /^(left|right)(Shoulder|UpperArm|LowerArm|Hand|Thumb|Index|Middle|Ring|Little)/.test(boneName);
+        const upperBody = arm || ['spine', 'chest', 'upperChest', 'neck', 'head'].includes(boneName);
+        let x = 0, z = 0;
+        if (upperBody) z = 0.025 + 0.012 * Math.sin(phase);
+        if (['neck', 'head'].includes(boneName)) z += 0.065 + 0.018 * Math.sin(phase);
+        if (arm) {
+          const side = boneName.startsWith('left') ? 1 : -1;
+          x = -0.12 + 0.015 * Math.sin(phase);
+          z += side * 0.045;
+          if (!/(Shoulder|UpperArm)$/.test(boneName)) x -= 0.14;
+        }
+        rotation.premultiply(new Quaternion().setFromEuler(new Euler(x, 0, z))).normalize();
+      }
+      rotations[boneName].push(...rotation.toArray().map(round));
+      if (boneName === 'leftFoot') { const z = object.getWorldPosition(new Vector3()).z; minFootZ = Math.min(minFootZ, z); maxFootZ = Math.max(maxFootZ, z); }
     }
     hipsPositions.push(...hips.getWorldPosition(new Vector3()).sub(restHips).toArray().map(round));
   }
   // Remove horizontal drift; retain the authored side-to-side sway and vertical bounce.
   const originX = hipsPositions[0], originZ = hipsPositions[2];
   for (let i = 0; i < hipsPositions.length; i += 3) { hipsPositions[i] = round(hipsPositions[i] - originX); hipsPositions[i + 2] = round(hipsPositions[i + 2] - originZ); }
-  result.clips[name] = { source, duration: clip.duration, times, rotations, hipsPositions, referenceSpeed: name === 'idle' ? 0 : 2 * (maxFootZ - minFootZ) / clip.duration };
+  result.clips[name] = { source: name === 'idle' ? `${source} (OpenVRoom gentle idle)` : source, duration, times, rotations, hipsPositions, referenceSpeed: name === 'idle' ? 0 : 2 * (maxFootZ - minFootZ) / clip.duration };
   action.stop();
   console.log(`${name}: ${frames + 1} samples, ${Object.keys(rotations).length} bones, ${result.clips[name].referenceSpeed.toFixed(2)} m/s`);
 }
