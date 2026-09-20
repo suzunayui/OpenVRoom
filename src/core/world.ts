@@ -317,6 +317,7 @@ export class World {
     if (this.avatar) { this.avatar.update(0); this.player.updateMatrixWorld(true); this.avatar.springBoneManager?.reset(); }
     this.updateCamera(1);
   }
+  clearMovement(): void { this.keys.clear(); this.horizontalVelocity.set(0, 0, 0); }
   setMovement(key: string, active: boolean): void { if (active) this.keys.add(key); else this.keys.delete(key); }
   focus(): void { this.renderer.domElement.focus(); }
   private resize(): void {

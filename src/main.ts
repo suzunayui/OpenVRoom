@@ -24,12 +24,29 @@ function icon(name: keyof typeof icons) { return `<svg viewBox="0 0 24 24" fill=
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <header class="topbar">
     <a class="brand" href="./" aria-label="OpenVRoom ホーム"><span class="brand-mark">${icon('cube')}</span>Open<span>VRoom</span><small>EARLY ACCESS</small></a>
-    <div class="top-right"><button class="text-button" id="online-button">友だちと遊ぶ</button><span class="local-badge" id="session-badge"><i></i><span id="session-label">ローカルセッション</span></span><button class="icon-button" id="help-button" aria-label="操作ガイド">${icon('help')}</button></div>
+    <div class="top-right"><button class="text-button" id="online-button">友だちと遊ぶ</button><button class="settings-button" id="settings-button" aria-haspopup="dialog">設定</button><button class="text-button" id="quick-mic" hidden aria-pressed="false">マイクをオン</button><span class="local-badge" id="session-badge"><i></i><span id="session-label">ローカルセッション</span></span><button class="icon-button" id="help-button" aria-label="操作ガイド">${icon('help')}</button></div>
   </header>
   <main class="workspace">
-    <aside class="sidebar">
-      <div class="intro"><div class="eyebrow">YOUR SPACE, OPEN.</div><h1>あなたの居場所を、<br>ひらこう。</h1><p>好きな姿で、好きな空間へ。</p></div>
-      <section class="room-panel">
+
+    <section class="stage" aria-label="ルームプレビュー">
+      <div id="viewport">
+        <div class="scene-top"><div class="scene-label"><span class="live-dot"></span><span id="scene-title">こもれびのラウンジ</span><span class="scene-divider"></span><span class="scene-subtitle">ROOM PREVIEW</span></div><button class="floating-button" id="reset-position" title="出現位置に戻る（R）" aria-label="出現位置に戻る">${icon('reset')}</button></div>
+        <div class="welcome"><div class="eyebrow">MAKE YOURSELF AT HOME</div><h2>ようこそ、OpenVRoomへ。</h2><p id="room-description">光の差し込む、小さな居場所。</p></div>
+        <div class="loading" id="loading" role="status"><span class="spinner"></span><span id="loading-text">ルームを読み込み中…</span></div>
+        <div class="scene-bottom"><div class="movement-hint"><span class="key-group"><kbd>W</kbd><span><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span></span><span>自由に歩いてみよう<small>画面をクリックして移動</small></span></div><div class="view-hint"><span>ドラッグで見回す</span><i>·</i><span>スクロールでズーム</span></div></div>
+        <div class="touch-pad" aria-label="タッチ移動"><button data-move="KeyW" aria-label="前進">↑</button><div><button data-move="KeyA" aria-label="左へ">←</button><button data-move="KeyS" aria-label="後退">↓</button><button data-move="KeyD" aria-label="右へ">→</button></div></div>
+      </div>
+      <footer class="statusbar"><span class="status-left"><span class="status-dot"></span><span id="status-text">準備中</span></span><span class="status-right"><span id="coordinates">X 0.0 · Z 0.0</span><span id="fps">— FPS</span><span class="renderer-label">WebGL</span></span></footer>
+    </section>
+  </main>
+  <dialog id="settings-dialog" aria-labelledby="settings-title">
+    <div class="settings-heading"><div><span class="eyebrow">MAKE IT YOURS</span><h2 id="settings-title">設定</h2></div><button class="icon-button" id="close-settings" aria-label="設定を閉じる">${icon('close')}</button></div>
+    <div class="settings-tabs" role="tablist" aria-label="設定の種類">
+      <button role="tab" id="tab-room" aria-controls="panel-room" aria-selected="true" tabindex="0">ルーム</button>
+      <button role="tab" id="tab-avatar" aria-controls="panel-avatar" aria-selected="false" tabindex="-1">アバター</button>
+      <button role="tab" id="tab-social" aria-controls="panel-social" aria-selected="false" tabindex="-1">交流・音声</button>
+    </div><div class="settings-content">
+      <section id="panel-room" role="tabpanel" aria-labelledby="tab-room" tabindex="0" class="room-panel">
         <div class="section-heading"><h2>ルーム</h2><span class="tiny-label">01 / LOCAL</span></div>
         <div class="room-card"><div class="room-art" aria-hidden="true"><div class="art-window"></div><div class="art-sofa"></div><div class="art-table"></div><span>STARTER ROOM</span></div>
           <div class="room-card-body"><div class="room-title-line"><span class="status-dot"></span><h3 id="room-title">ルームを準備中…</h3></div><p id="room-author">by OpenVRoom</p><div class="tags"><span>.vroom</span><span>最大6人で参加</span></div></div>
@@ -37,13 +54,13 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <button class="primary-button" id="open-room">${icon('folder')}ルームを開く<span class="button-end">${icon('arrow')}</span></button>
         <div class="room-actions"><button class="text-button" id="starter-room">${icon('home')}サンプルに戻す</button><a class="text-button" href="./starter-room.vroom" download="starter-room.vroom" aria-label="サンプルルームを保存">${icon('download')}保存</a></div>
       </section>
-      <section class="avatar-panel"><div class="section-heading"><h2>アバター</h2><span class="tiny-label">VRM 0.x / 1.0</span></div>
+      <section id="panel-avatar" role="tabpanel" aria-labelledby="tab-avatar" tabindex="0" hidden class="avatar-panel"><div class="section-heading"><h2>アバター</h2><span class="tiny-label">VRM 0.x / 1.0</span></div>
         <div class="avatar-current"><div class="avatar-symbol">${icon('person')}</div><div><h3 id="avatar-name">旅人</h3><p id="avatar-detail">標準アバター</p></div><span class="selected-check">${icon('check')}</span></div>
         <button class="secondary-button" id="open-avatar">${icon('upload')}VRMを読み込む</button>
         <button class="text-button default-avatar" id="default-avatar" hidden>標準アバターに戻す</button>
         <p class="privacy-note">${icon('lock')}共有を選ぶまで、この端末内で読み込みます。</p>
       </section>
-      <section class="multiplayer-panel" aria-label="みんなで遊ぶ">
+      <section id="panel-social" role="tabpanel" aria-labelledby="tab-social" tabindex="0" hidden class="multiplayer-panel" aria-label="みんなで遊ぶ">
         <div class="section-heading"><h2>みんなで遊ぶ</h2><span class="tiny-label" id="member-count">最大6人</span></div>
         <div id="session-entry">
           <label class="field-label" for="player-name">表示名</label><input id="player-name" maxlength="24" value="旅人" autocomplete="off" />
@@ -74,19 +91,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <p class="session-note">ホストが退出すると終了します。着替え・ルーム変更は退出後にできます。</p>
         </div>
       </section>
-      <div class="sidebar-footer"><span class="version">OPENVROOM <b>v0.1</b></span><p>招待リンクで、<br>同じ居場所へ。</p></div>
-    </aside>
-    <section class="stage" aria-label="ルームプレビュー">
-      <div id="viewport">
-        <div class="scene-top"><div class="scene-label"><span class="live-dot"></span><span id="scene-title">こもれびのラウンジ</span><span class="scene-divider"></span><span class="scene-subtitle">ROOM PREVIEW</span></div><button class="floating-button" id="reset-position" title="出現位置に戻る（R）" aria-label="出現位置に戻る">${icon('reset')}</button></div>
-        <div class="welcome"><div class="eyebrow">MAKE YOURSELF AT HOME</div><h2>ようこそ、OpenVRoomへ。</h2><p id="room-description">光の差し込む、小さな居場所。</p></div>
-        <div class="loading" id="loading" role="status"><span class="spinner"></span><span id="loading-text">ルームを読み込み中…</span></div>
-        <div class="scene-bottom"><div class="movement-hint"><span class="key-group"><kbd>W</kbd><span><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span></span><span>自由に歩いてみよう<small>画面をクリックして移動</small></span></div><div class="view-hint"><span>ドラッグで見回す</span><i>·</i><span>スクロールでズーム</span></div></div>
-        <div class="touch-pad" aria-label="タッチ移動"><button data-move="KeyW" aria-label="前進">↑</button><div><button data-move="KeyA" aria-label="左へ">←</button><button data-move="KeyS" aria-label="後退">↓</button><button data-move="KeyD" aria-label="右へ">→</button></div></div>
-      </div>
-      <footer class="statusbar"><span class="status-left"><span class="status-dot"></span><span id="status-text">準備中</span></span><span class="status-right"><span id="coordinates">X 0.0 · Z 0.0</span><span id="fps">— FPS</span><span class="renderer-label">WebGL</span></span></footer>
-    </section>
-  </main>
+    </div><div class="settings-footer">設定中もルームへの接続・音声通話は続きます。</div></dialog>
   <input type="file" id="room-file" accept=".vroom" hidden />
   <input type="file" id="avatar-file" accept=".vrm" hidden />
   <div class="toast" id="toast" role="status" hidden><span id="toast-message"></span><button id="toast-close" aria-label="通知を閉じる">${icon('close')}</button></div>
@@ -139,6 +144,37 @@ async function readFile(file: File, extension: string) {
   return file.arrayBuffer();
 }
 $('toast-close').onclick = () => { $('toast').hidden = true; };
+const settings = $<HTMLDialogElement>('settings-dialog');
+const settingsTabs = [...settings.querySelectorAll<HTMLButtonElement>('[role=tab]')];
+function selectSettings(tab: string) {
+  for (const button of settingsTabs) {
+    const selected = button.id === `tab-${tab}`;
+    button.setAttribute('aria-selected', String(selected)); button.tabIndex = selected ? 0 : -1;
+    $(button.getAttribute('aria-controls')!).hidden = !selected;
+  }
+}
+function openSettings(tab?: string) {
+  if (tab) selectSettings(tab);
+  world?.clearMovement();
+  settings.append($('toast'));
+  if (!settings.open) settings.showModal();
+}
+$('settings-button').onclick = () => openSettings();
+$('close-settings').onclick = () => settings.close();
+settings.addEventListener('close', () => { document.querySelector('#app')!.append($('toast')); });
+settings.addEventListener('click', event => {
+  if (event.target !== settings) return;
+  const r = settings.getBoundingClientRect();
+  if (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom) settings.close();
+});
+for (const [index, button] of settingsTabs.entries()) {
+  button.onclick = () => selectSettings(button.id.slice(4));
+  button.onkeydown = event => {
+    const next = event.key === 'ArrowRight' ? (index + 1) % settingsTabs.length : event.key === 'ArrowLeft' ? (index + settingsTabs.length - 1) % settingsTabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? settingsTabs.length - 1 : -1;
+    if (next < 0) return;
+    event.preventDefault(); settingsTabs[next].click(); settingsTabs[next].focus();
+  };
+}
 const help = $<HTMLDialogElement>('help-dialog');
 $('help-button').onclick = () => help.showModal();
 $('close-help').onclick = () => help.close();
@@ -318,7 +354,7 @@ function enterSession(join: boolean) {
 $('create-room').onclick = () => enterSession(false);
 $('join-room').onclick = () => enterSession(true);
 $('online-button').onclick = () => {
-  document.querySelector('.multiplayer-panel')!.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  openSettings('social');
   (session ? $('leave-room') : $('player-name')).focus({ preventScroll: true });
 };
 $('leave-room').onclick = () => session?.close();
@@ -329,7 +365,7 @@ $('copy-invite').onclick = async () => {
 };
 if (location.hash.startsWith('#invite=')) {
   $<HTMLInputElement>('invite-input').value = location.href;
-  $('join-room').scrollIntoView({ block: 'nearest' });
+  openSettings('social');
   notify('招待されています。表示名とVRM共有を確認して「参加」を押してください。');
 }
 
@@ -337,6 +373,8 @@ function renderVoice(state: VoiceState) {
   const toggle = $<HTMLButtonElement>('mic-toggle');
   toggle.disabled = !state.ready; toggle.setAttribute('aria-pressed', String(state.enabled));
   toggle.textContent = state.busy ? 'マイクの操作をキャンセル' : state.enabled ? 'マイクをオフ' : 'マイクをオン';
+  const quick = $<HTMLButtonElement>('quick-mic');
+  quick.hidden = !session; quick.disabled = toggle.disabled; quick.textContent = toggle.textContent; quick.setAttribute('aria-pressed', String(state.enabled));
   $('mic-status').textContent = state.busy ? 'マイクの許可・接続を確認中…' : state.enabled ? 'マイクON · 参加者に送信しています' : 'マイクはオフです';
   const select = $<HTMLSelectElement>('mic-device'); select.disabled = state.busy;
   const devices = [{ id: '', label: 'システム既定のマイク' }, ...state.devices];
@@ -349,6 +387,7 @@ function renderVoice(state: VoiceState) {
   select.value = state.selected;
   $('resume-audio').hidden = !state.playbackBlocked;
 }
+$('quick-mic').onclick = () => voice?.toggleMic();
 $('mic-toggle').onclick = () => voice?.toggleMic();
 $('mic-device').onchange = () => { void voice?.selectDevice($<HTMLSelectElement>('mic-device').value); };
 $('refresh-mics').onclick = async () => {

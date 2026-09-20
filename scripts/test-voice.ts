@@ -38,6 +38,7 @@ async function open(name: string) {
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') console.error(name, message.text()); });
   await page.goto(origin); await expect(page.locator('#loading')).toBeHidden({ timeout: 60000 });
+  await page.locator('#online-button').click();
   await page.locator('#player-name').fill(name); return page;
 }
 async function captureCount(page: Page) { return page.evaluate(() => (window as any).voiceTest.calls.length as number); }
@@ -69,6 +70,14 @@ try {
   await host.locator('#mic-device').selectOption(devices[0]);
   await host.locator('#mic-toggle').click();
   await expect(host.locator('#mic-toggle')).toHaveAttribute('aria-pressed', 'true');
+  await host.locator('#close-settings').click();
+  await expect(host.locator('#quick-mic')).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => receivingEnergy(guest), { timeout: 15000 }).toBeGreaterThan(0.001);
+  await host.locator('#quick-mic').click();
+  await expect.poll(() => liveTracks(host)).toBe(0);
+  await host.locator('#quick-mic').click();
+  await expect(host.locator('#quick-mic')).toHaveAttribute('aria-pressed', 'true');
+  await host.locator('#online-button').click();
   console.log('Microphone enabled; waiting for received audio');
   await expect.poll(() => receivingEnergy(guest), { timeout: 15000 }).toBeGreaterThan(0.001);
   await expect.poll(async () => Number(await guest.locator('[data-voice-enabled=true]').first().getAttribute('data-voice-level'))).toBeGreaterThan(0.02);

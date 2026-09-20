@@ -41,6 +41,8 @@ test('VRM 1.0 loads, animates, switches, and preserves avatar after a bad upload
   await expect(page.locator('#toast')).toHaveClass(/error/);
   await expect(page.locator('#avatar-name')).toHaveText('test-humanoid');
   await page.screenshot({ path: 'test-results/vrm.png' });
+  await page.locator('#settings-button').click();
+  await page.locator('#tab-avatar').click();
   await page.getByRole('button', { name: '標準アバターに戻す' }).click();
   await expect(page.locator('#avatar-name')).toHaveText('旅人');
   await expect(page.locator('#default-avatar')).toBeHidden();
@@ -70,8 +72,39 @@ test('mobile layout and guide stay usable', async ({ page }) => {
   await page.goto('/'); await expect(page.locator('#loading')).toBeHidden();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
   await page.getByRole('button', { name: '操作ガイド' }).click();
-  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.locator('#help-dialog')).toBeVisible();
   await page.getByRole('button', { name: '歩いてみる' }).click();
-  await expect(page.getByRole('dialog')).toBeHidden();
+  await expect(page.locator('#help-dialog')).toBeHidden();
   await page.screenshot({ path: 'test-results/mobile.png', fullPage: true });
 });
+
+for (const width of [1280, 390]) {
+  test(`settings modal tabs, focus and movement at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto('/'); await expect(page.locator('#loading')).toBeHidden();
+    await expect(page.locator('#settings-dialog')).toBeHidden();
+    expect(await page.locator('#viewport').evaluate(e => e.clientWidth)).toBe(width);
+    await page.locator('canvas').focus(); await page.keyboard.down('KeyW');
+    await page.locator('#settings-button').click(); await page.keyboard.up('KeyW');
+    await expect(page.locator('#settings-dialog')).toBeVisible();
+    await page.locator('#tab-room').focus(); await page.keyboard.press('ArrowRight');
+    await expect(page.locator('#panel-avatar')).toBeVisible();
+    await expect(page.locator('#panel-room')).toBeHidden();
+    await page.locator('#tab-social').click();
+    await expect(page.locator('#viewport')).toHaveAttribute('data-speed', '0.000');
+    // Coordinates refresh every 500 ms; wait for the post-open position.
+    await page.waitForTimeout(600);
+    const position = await page.locator('#coordinates').textContent();
+    await page.locator('#player-name').fill('wasd'); await page.waitForTimeout(600);
+    await expect(page.locator('#coordinates')).toHaveText(position!);
+    const rect = await page.locator('#settings-dialog').boundingBox();
+    expect(rect!.x).toBeGreaterThanOrEqual(0); expect(rect!.y).toBeGreaterThanOrEqual(0);
+    expect(rect!.y + rect!.height).toBeLessThanOrEqual(844);
+    await page.screenshot({ path: `test-results/settings-${width}.png` });
+    await page.keyboard.press('Escape'); await expect(page.locator('#settings-dialog')).toBeHidden();
+    await expect(page.locator('#settings-button')).toBeFocused();
+    await page.locator('#settings-button').click();
+    await expect(page.locator('#player-name')).toHaveValue('wasd');
+    await page.locator('#close-settings').click();
+  });
+}

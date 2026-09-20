@@ -24,7 +24,9 @@ async function page(name: string) {
   page.on('console', msg => { if (msg.type() === 'error') console.error(name, msg.text()); });
   await page.goto(url);
   await expect(page.locator('#loading')).toBeHidden({ timeout: 60000 });
+  await page.locator('#settings-button').click(); await page.locator('#tab-avatar').click();
   if (await page.locator('#default-avatar').isVisible()) await page.locator('#default-avatar').click();
+  await page.locator('#tab-social').click();
   await page.locator('#player-name').fill(name);
   return page;
 }
@@ -53,6 +55,7 @@ try {
   await expect.poll(async () => (await remotes(host)).filter(p => !p.avatar && p.visible).length, { timeout: 30000 }).toBe(1);
   await expect(guest.locator('#open-room')).toBeDisabled();
   const before = (await remotes(guest))[0];
+  await host.locator('#close-settings').click();
   await host.locator('canvas').focus(); await host.keyboard.down('KeyD'); await host.waitForTimeout(1400); await host.keyboard.up('KeyD');
   await expect.poll(async () => Math.abs((await remotes(guest))[0].x - before.x), { timeout: 20000 }).toBeGreaterThan(0.2);
   const third = await page('3人目');
@@ -60,6 +63,7 @@ try {
   await expect(third.locator('#status-text')).toHaveText('みんなで探索中 · 3人', { timeout: 60000 });
   await expect.poll(async () => (await remotes(third)).filter(p => p.visible).length, { timeout: 30000 }).toBe(2);
   const guestBefore = (await remotes(third)).find(p => !p.avatar)!;
+  await guest.locator('#close-settings').click();
   await guest.locator('canvas').focus(); await guest.keyboard.down('KeyA'); await guest.waitForTimeout(1200); await guest.keyboard.up('KeyA');
   await expect.poll(async () => Math.abs((await remotes(third)).find(p => !p.avatar)!.x - guestBefore.x), { timeout: 20000 }).toBeGreaterThan(0.2);
   await host.screenshot({ path: 'test-results/multiplayer.png' });
@@ -85,6 +89,8 @@ try {
   await expect.poll(async () => (await remotes(host)).length).toBe(1);
   await third.locator('#join-room').click();
   await expect(third.locator('#status-text')).toHaveText('みんなで探索中 · 3人', { timeout: 60000 });
+  await host.locator('#online-button').click();
+  await guest.locator('#online-button').click();
   await host.locator('#leave-room').click();
   await expect(guest.locator('#session-entry')).toBeVisible({ timeout: 15000 });
   await expect(third.locator('#session-entry')).toBeVisible({ timeout: 15000 });

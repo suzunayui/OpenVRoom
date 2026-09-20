@@ -33,6 +33,7 @@ try {
   await expect(page.locator('#coordinates')).not.toContainText('Z 2.4');
   await page.screenshot({ path: 'test-results/windows.png' });
   if (process.argv.includes('--online')) {
+    await page.locator('#online-button').click();
     await page.locator('#share-avatar').check();
     await page.locator('#create-room').click();
     await expect(page.locator('#invite-link')).toHaveValue(/https:\/\/openvroom.com\/room\/#invite=/, { timeout: 20000 });
