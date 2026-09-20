@@ -59,14 +59,14 @@ export class World {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.25;
+    this.renderer.toneMappingExposure = 1.0;
     const canvas = this.renderer.domElement;
     canvas.tabIndex = 0;
     canvas.setAttribute('aria-label', '3Dルーム。WASDまたは矢印キーで移動、ドラッグで視点を変更。');
     container.prepend(canvas);
     this.scene.background = new THREE.Color('#cbd8d7');
-    this.scene.add(new THREE.HemisphereLight(0xe9f3ff, 0xa99578, 2.7));
-    const sun = new THREE.DirectionalLight(0xffebd0, 3.5);
+    this.scene.add(new THREE.HemisphereLight(0xe9f3ff, 0xa99578, 0.85));
+    const sun = new THREE.DirectionalLight(0xfff4e8, 1.6);
     sun.position.set(5, 9, 3); sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     Object.assign(sun.shadow.camera, { left: -12, right: 12, top: 12, bottom: -12, near: 0.5, far: 35 });
