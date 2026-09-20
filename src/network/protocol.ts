@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const MAX_MEMBERS = 6;
 export const MAX_TRANSFER = 64 * 1024 * 1024;
 export const memberId = z.string().uuid();
-export const inviteToken = z.string().regex(/^[A-Za-z0-9_-]{32}$/);
+export const inviteToken = z.string().regex(/^(?:[A-Za-z0-9_-]{12}|[A-Za-z0-9_-]{32})$/);
 export const displayName = z.string().trim().min(1).max(24).regex(/^[^\u0000-\u001f\u007f<>]+$/u);
 export const memberSchema = z.object({ id: memberId, name: displayName }).strict();
 const description = z.object({ type: z.enum(['offer', 'answer']), sdp: z.string().max(12000) }).strict();
@@ -13,7 +13,7 @@ export const signalPayload = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('candidate'), candidate }).strict(),
 ]);
 export const clientMessage = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('create'), version: z.literal(2), name: displayName }).strict(),
+  z.object({ type: z.literal('create'), version: z.literal(2), name: displayName, shortInvite: z.boolean().optional() }).strict(),
   z.object({ type: z.literal('join'), version: z.literal(2), name: displayName, token: inviteToken }).strict(),
   z.object({ type: z.literal('signal'), to: memberId, payload: signalPayload }).strict(),
   z.object({ type: z.literal('kick'), id: memberId }).strict(),

@@ -75,7 +75,9 @@ export function createSignaling(options: { origins: string[]; turnSecret?: strin
           let room: Room | undefined;
           if (msg.type === 'create') {
             if (rooms.size >= 60) { send(client, { type: 'error', message: 'ただいま混み合っています。少し待って再試行してください。' }); ws.close(); return; }
-            const token = randomBytes(24).toString('base64url');
+            // 72 random bits for new links; keep legacy clients working.
+            let token: string;
+            do { token = randomBytes(msg.shortInvite ? 9 : 24).toString('base64url'); } while (rooms.has(token));
             room = { token, host: client.id, members: new Map(), created: time }; rooms.set(token, room);
           } else room = rooms.get(msg.token);
           if (!room) { send(client, { type: 'error', message: '招待リンクが無効か、ルームが終了しています。' }); ws.close(); return; }

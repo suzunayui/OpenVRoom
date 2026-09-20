@@ -1,11 +1,15 @@
 import { defineConfig } from 'vite';
 import { existsSync, readFileSync } from 'node:fs';
 
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ mode, command }) => ({
   base: './',
   publicDir: mode === 'public' ? false : 'public',
   plugins: [{
     name: 'local-avatar-config',
+    transformIndexHtml(html) {
+      const base = mode === 'public' ? '/room/' : command === 'serve' ? '/' : undefined;
+      return base ? html.replace('<head>', `<head><base href="${base}">`) : html;
+    },
     resolveId(id) { if (id === 'virtual:local-avatar') return '\0local-avatar'; },
     load(id) {
       if (id !== '\0local-avatar') return;

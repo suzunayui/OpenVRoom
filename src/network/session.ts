@@ -50,7 +50,7 @@ export class RoomSession {
     this.roomHash = token ? undefined : digest(this.assets.room);
     this.avatarHash = this.assets.avatar ? digest(this.assets.avatar) : undefined;
     const ws = this.ws = new WebSocket(signalingUrl());
-    ws.onopen = () => ws.send(JSON.stringify(token ? { type: 'join', version: 2, name, token } : { type: 'create', version: 2, name }));
+    ws.onopen = () => ws.send(JSON.stringify(token ? { type: 'join', version: 2, name, token } : { type: 'create', version: 2, name, shortInvite: true }));
     ws.onmessage = event => {
       try {
         if (typeof event.data !== 'string' || event.data.length > 20000) throw new Error();

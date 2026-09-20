@@ -246,6 +246,10 @@ function lockAssets(locked: boolean) {
 function readInvitation(value: string): string {
   let token = value.trim();
   if (token.includes('#')) token = new URLSearchParams(token.slice(token.indexOf('#') + 1)).get('invite') ?? '';
+  else if (token.includes('/')) {
+    try { token = new URL(token.includes('://') ? token : `https://${token}`).pathname.match(/^\/room\/([A-Za-z0-9_-]+)\/?$/)?.[1] ?? ''; }
+    catch { token = ''; }
+  }
   const parsed = inviteToken.safeParse(token);
   if (!parsed.success) throw new Error('有効な招待リンクを貼り付けてください。');
   return parsed.data;
@@ -317,7 +321,7 @@ function enterSession(join: boolean) {
     status: message => { if (session === current) $('session-status').textContent = message; },
     invitation: value => {
       const url = new URL(location.protocol === 'file:' ? 'https://openvroom.com/room/' : location.href);
-      url.search = ''; url.hash = `invite=${value}`;
+      url.pathname = `/room/${value}/`; url.search = ''; url.hash = '';
       $<HTMLInputElement>('invite-link').value = url.href;
     },
     closed: reason => {
@@ -363,7 +367,7 @@ $('copy-invite').onclick = async () => {
   try { await navigator.clipboard.writeText(input.value); notify('招待リンクをコピーしました。友だちに送ってください。'); }
   catch { input.focus(); input.select(); notify('リンクを選択しました。コピーして送ってください。'); }
 };
-if (location.hash.startsWith('#invite=')) {
+if (location.hash.startsWith('#invite=') || /^\/room\/(?:[A-Za-z0-9_-]{12}|[A-Za-z0-9_-]{32})\/?$/.test(location.pathname)) {
   $<HTMLInputElement>('invite-input').value = location.href;
   openSettings('social');
   notify('招待されています。表示名とVRM共有を確認して「参加」を押してください。');

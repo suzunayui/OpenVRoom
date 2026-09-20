@@ -57,7 +57,7 @@ async function receivingEnergy(page: Page) {
 }
 try {
   const host = await open('音声ホスト'); await host.locator('#create-room').click();
-  await expect(host.locator('#invite-link')).toHaveValue(/#invite=/);
+  await expect(host.locator('#invite-link')).toHaveValue(/\/room\/[\w-]{12}\/$/);
   const guest = await open('音声ゲスト'); await guest.locator('#invite-input').fill(await host.locator('#invite-link').inputValue()); await guest.locator('#join-room').click();
   await expect(guest.locator('#status-text')).toHaveText('みんなで探索中 · 2人', { timeout: 60000 });
   if (await guest.locator('#resume-audio').isVisible()) await guest.locator('#resume-audio').click();

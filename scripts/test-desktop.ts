@@ -36,7 +36,7 @@ try {
     await page.locator('#online-button').click();
     await page.locator('#share-avatar').check();
     await page.locator('#create-room').click();
-    await expect(page.locator('#invite-link')).toHaveValue(/https:\/\/openvroom.com\/room\/#invite=/, { timeout: 20000 });
+    await expect(page.locator('#invite-link')).toHaveValue(/https:\/\/openvroom.com\/room\/[\w-]{12}\/$/, { timeout: 20000 });
     const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', ...voiceArgs] });
     try {
       const guest = await browser.newPage();

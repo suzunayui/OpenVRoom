@@ -126,3 +126,5 @@ npm run generate:motions
 歩行素材はQuaternius「Universal Animation Library / Standard」のCC0素材です。使用クリップ・配布元・変更内容は `public/motions/README.md`、ライセンス全文は `public/motions/LICENSE-CC0.txt` を参照してください。素材はアプリ内に同梱され、実行時に外部からダウンロードしません。
 
 技術資料: [Three.js GLTFLoader](https://threejs.org/docs/pages/GLTFLoader.html)、[three-vrm VRMLoaderPlugin](https://pixiv.github.io/three-vrm/docs/classes/three-vrm.VRMLoaderPlugin.html)。
+
+招待リンクは `https://openvroom.com/room/12文字コード/` の形式です。URLを直接開くと参加画面が表示され、表示名などを確認してから参加できます。従来の `#invite=...` 形式も読み取れます。

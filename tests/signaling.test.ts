@@ -21,15 +21,15 @@ test('rooms enforce capacity, isolate signaling, remove guests and end with the 
     } };
   }
   try {
-    const host = await connect(); host.ws.send(JSON.stringify({ type: 'create', version: 2, name: 'Host' }));
-    const welcome = await host.next('welcome'); assert.match(welcome.token, /^[\w-]{32}$/);
+    const host = await connect(); host.ws.send(JSON.stringify({ type: 'create', version: 2, name: 'Host', shortInvite: true }));
+    const welcome = await host.next('welcome'); assert.match(welcome.token, /^[\w-]{12}$/);
     assert.equal(welcome.iceServers.length, 2); assert.ok(welcome.iceServers[1].credential);
     const guests = [];
     for (let i = 0; i < 5; i++) { const guest = await connect(); guest.ws.send(JSON.stringify({ type: 'join', version: 2, name: `Guest ${i}`, token: welcome.token })); await guest.next('welcome'); guests.push(guest); }
     const overflow = await connect(); overflow.ws.send(JSON.stringify({ type: 'join', version: 2, name: 'Overflow', token: welcome.token }));
     assert.match((await overflow.next('error')).message, /満員/);
     const outsider = await connect(); outsider.ws.send(JSON.stringify({ type: 'create', version: 2, name: 'Other room' }));
-    await outsider.next('welcome');
+    assert.match((await outsider.next('welcome')).token, /^[\w-]{32}$/);
     const signal = { type: 'signal', to: welcome.self, payload: { kind: 'description', description: { type: 'offer', sdp: 'test' } } };
     outsider.ws.send(JSON.stringify(signal)); await new Promise(r => setTimeout(r, 50)); assert.equal(host.queue.some(x => x.type === 'signal'), false);
     guests[0].ws.send(JSON.stringify(signal)); assert.equal((await host.next('signal')).payload.description.sdp, 'test');

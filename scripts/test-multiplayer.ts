@@ -7,7 +7,7 @@ const url = process.argv[2] ?? 'http://127.0.0.1:5173/';
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows'] });
 const errors: string[] = [];
 const expect = baseExpect.configure({ timeout: 30000 });
-async function page(name: string) {
+async function page(name: string, invitation?: string) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   if (process.argv.includes('--relay')) await context.addInitScript(() => {
     const Native = window.RTCPeerConnection;
@@ -22,9 +22,15 @@ async function page(name: string) {
   const page = await context.newPage();
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', msg => { if (msg.type() === 'error') console.error(name, msg.text()); });
-  await page.goto(url);
+  await page.goto(invitation ?? url);
+  if (invitation) {
+    await page.reload();
+    await expect(page.locator('#settings-dialog')).toBeVisible();
+    await expect(page.locator('#invite-input')).toHaveValue(invitation);
+  }
   await expect(page.locator('#loading')).toBeHidden({ timeout: 60000 });
-  await page.locator('#settings-button').click(); await page.locator('#tab-avatar').click();
+  if (!invitation) await page.locator('#settings-button').click();
+  await page.locator('#tab-avatar').click();
   if (await page.locator('#default-avatar').isVisible()) await page.locator('#default-avatar').click();
   await page.locator('#tab-social').click();
   await page.locator('#player-name').fill(name);
@@ -42,9 +48,9 @@ try {
   await expect(host.locator('#avatar-name')).toHaveText('shared');
   await host.locator('#share-avatar').check();
   await host.locator('#create-room').click();
-  await expect(host.locator('#invite-link')).toHaveValue(/#invite=[\w-]{32}$/, { timeout: 15000 });
+  await expect(host.locator('#invite-link')).toHaveValue(/\/room\/[\w-]{12}\/$/, { timeout: 15000 });
   const invite = await host.locator('#invite-link').inputValue();
-  const guest = await page('ゲスト');
+  const guest = await page('ゲスト', invite);
   // Loading a private avatar without checking sharing must not send it.
   await guest.locator('#avatar-file').setInputFiles({ name: 'unshared.vrm', mimeType: 'application/octet-stream', buffer: Buffer.from(testVrm()) });
   await expect(guest.locator('#avatar-name')).toHaveText('unshared');
