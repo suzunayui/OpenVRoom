@@ -128,3 +128,13 @@ npm run generate:motions
 技術資料: [Three.js GLTFLoader](https://threejs.org/docs/pages/GLTFLoader.html)、[three-vrm VRMLoaderPlugin](https://pixiv.github.io/three-vrm/docs/classes/three-vrm.VRMLoaderPlugin.html)。
 
 招待リンクは `https://openvroom.com/room/12文字コード/` の形式です。URLを直接開くと参加画面が表示され、表示名などを確認してから参加できます。従来の `#invite=...` 形式も読み取れます。
+
+## 追加サンプルルーム
+
+「設定」→「ルーム」→「サンプルルーム」から3つの部屋を選べます。従来のラウンジと合わせて4部屋です。選んだ部屋で招待ルームを作ると、参加者にも同じ部屋が共有されます。
+
+- ボタニカルカフェ：カウンター、植物、真鍮のペンダント、コーヒーと小物。
+- 雨音の書斎：装飾付きの本棚、暖炉、読書ソファ、窓辺の机。
+- 月庭の和室：畳と障子、茶卓、池、飛び石と竹。
+
+アセットはこのプロジェクト用に生成したものです。外部モデルやテクスチャは不要で、各 `.vroom` に形状と材質を格納しています。`npm run generate:samples` で再生成できます。細かな装飾は材質ごとに結合し、家具の衝突判定を保持しています。雨音などの環境音・座る操作は含みません。

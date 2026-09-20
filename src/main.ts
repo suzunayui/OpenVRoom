@@ -53,6 +53,12 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         </div>
         <button class="primary-button" id="open-room">${icon('folder')}ルームを開く<span class="button-end">${icon('arrow')}</span></button>
         <div class="room-actions"><button class="text-button" id="starter-room">${icon('home')}サンプルに戻す</button><a class="text-button" href="./starter-room.vroom" download="starter-room.vroom" aria-label="サンプルルームを保存">${icon('download')}保存</a></div>
+        <div class="sample-heading"><h3>サンプルルーム</h3><p>部屋を選んで探索。招待すれば友だちとも遊べます。</p></div>
+        <div class="sample-rooms">
+          <button class="sample-room" data-sample="cafe"><img src="./rooms/cafe.jpg" alt="" loading="lazy"><span>ボタニカルカフェ<small>植物・真鍮・コーヒー</small></span></button>
+          <button class="sample-room" data-sample="library"><img src="./rooms/library.jpg" alt="" loading="lazy"><span>雨音の書斎<small>本棚・暖炉・読書の席</small></span></button>
+          <button class="sample-room" data-sample="garden"><img src="./rooms/garden.jpg" alt="" loading="lazy"><span>月庭の和室<small>畳・池・竹の庭</small></span></button>
+        </div>
       </section>
       <section id="panel-avatar" role="tabpanel" aria-labelledby="tab-avatar" tabindex="0" hidden class="avatar-panel"><div class="section-heading"><h2>アバター</h2><span class="tiny-label">VRM 0.x / 1.0</span></div>
         <div class="avatar-current"><div class="avatar-symbol">${icon('person')}</div><div><h3 id="avatar-name">旅人</h3><p id="avatar-detail">標準アバター</p></div><span class="selected-check">${icon('check')}</span></div>
@@ -122,12 +128,17 @@ async function busy(message: string, job: () => Promise<void>) {
   try { await job(); } catch (error) { notify(error instanceof Error ? error.message : '読み込みに失敗しました。', true); }
   finally { if (--pending === 0) $('loading').hidden = true; }
 }
-async function showRoom(bytes: ArrayBuffer) {
+async function showRoom(bytes: ArrayBuffer, sample?: string) {
   const meta = await world.loadRoom(bytes);
   if (!meta) return;
   $('room-title').textContent = meta.title; $('scene-title').textContent = meta.title;
   $('room-author').textContent = `by ${meta.author}`; $('room-description').textContent = meta.description;
   roomBytes = bytes;
+  const art = document.querySelector<HTMLElement>('.room-art')!;
+  art.classList.toggle('room-photo', !!sample);
+  art.style.backgroundImage = sample ? `url(./rooms/${sample}.jpg)` : '';
+  art.style.backgroundSize = sample ? 'cover' : '';
+  art.style.backgroundPosition = sample ? 'center' : '';
   if (!session) $('status-text').textContent = '探索中 · この端末のみ';
 }
 async function starter() {
@@ -193,6 +204,18 @@ try {
   $('open-room').onclick = () => chooseFile('room-file');
   $('open-avatar').onclick = () => chooseFile('avatar-file');
   $('starter-room').onclick = () => void starter();
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-sample]')) {
+    button.onclick = () => {
+      if (session || pending) return;
+      void busy('サンプルルームを読み込み中…', async () => {
+        const response = await fetch(`./rooms/${button.dataset.sample}.vroom`);
+        if (!response.ok) throw new Error('サンプルルームを取得できませんでした。');
+        await showRoom(await response.arrayBuffer(), button.dataset.sample);
+        settings.close(); world.focus(); notify('ルームを変更しました。自由に探索してみましょう。');
+      });
+    };
+  }
+
   $('reset-position').onclick = () => { world.resetPosition(); world.focus(); notify('出現位置に戻りました。'); };
   $('default-avatar').onclick = () => {
     if (session) return;
@@ -241,6 +264,7 @@ try {
 }
 
 function lockAssets(locked: boolean) {
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-sample]')) button.disabled = locked;
   for (const id of ['open-room', 'starter-room', 'open-avatar', 'default-avatar', 'create-room', 'join-room']) $<HTMLButtonElement>(id).disabled = locked;
 }
 function readInvitation(value: string): string {

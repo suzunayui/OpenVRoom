@@ -5,6 +5,7 @@ import { join } from 'node:path';
 await build({ mode: 'public', build: { outDir: 'web-dist/room', emptyOutDir: true } });
 await cp('website', 'web-dist', { recursive: true });
 await cp('public/starter-room.vroom', 'web-dist/room/starter-room.vroom');
+await cp('public/rooms', 'web-dist/room/rooms', { recursive: true });
 await cp('public/motions', 'web-dist/room/motions', { recursive: true });
 const roomHtml = (await readFile('web-dist/room/index.html', 'utf8'))
   .replace(' ws://127.0.0.1:5173 ws://127.0.0.1:5180', '')

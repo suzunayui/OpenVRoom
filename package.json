@@ -13,6 +13,7 @@
     "test": "tsx --test tests/*.test.ts",
     "test:e2e": "playwright test",
     "test:desktop": "npm run build && tsx scripts/test-desktop.ts",
+    "generate:samples": "tsx scripts/generate-sample-rooms.ts",
     "generate:room": "tsx scripts/generate-room.ts",
     "generate:motions": "tsx scripts/prepare-motions.ts",
     "vroom": "tsx scripts/vroom.ts",
