@@ -1,0 +1,26 @@
+node_modules/
+dist/
+release/
+test-results/
+playwright-report/
+*.log
+.env
+src/local-avatar.json
+public/avatars/
+.cache/
+web-dist/
+deploy/*.tar.gz
+
+# Local settings, credentials and private models
+.env.*
+!.env.example
+*.local
+*.local.*
+*.vrm
+*.pem
+*.key
+*.p12
+*.pfx
+.ssh/
+.DS_Store
+Thumbs.db

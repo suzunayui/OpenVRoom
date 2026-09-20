@@ -1,0 +1,16 @@
+/var/log/nginx/openvroom/*.log {
+    daily
+    rotate 6
+    maxage 7
+    missingok
+    ifempty
+    compress
+    delaycompress
+    create 0640 www-data adm
+    sharedscripts
+    postrotate
+        if [ -s /run/nginx.pid ]; then
+            kill -USR1 $(cat /run/nginx.pid)
+        fi
+    endscript
+}

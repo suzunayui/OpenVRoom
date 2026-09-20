@@ -1,0 +1,55 @@
+{
+  "name": "openvroom",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenVRoom local 3D room and VRM avatar preview",
+  "author": "OpenVRoom",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "build:public": "tsc --noEmit && tsx scripts/build-public.ts",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "tsx --test tests/*.test.ts",
+    "test:e2e": "playwright test",
+    "test:desktop": "npm run build && tsx scripts/test-desktop.ts",
+    "generate:room": "tsx scripts/generate-room.ts",
+    "generate:motions": "tsx scripts/prepare-motions.ts",
+    "vroom": "tsx scripts/vroom.ts",
+    "desktop": "npm run build && electron .",
+    "desktop:pack": "npm run build && electron-builder --win dir --config.electronDist=node_modules/electron/dist"
+  },
+  "main": "electron/main.cjs",
+  "build": {
+    "appId": "org.openvroom.client",
+    "productName": "OpenVRoom",
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": "dir",
+      "signAndEditExecutable": false
+    }
+  },
+  "dependencies": {
+    "@pixiv/three-vrm": "^3.5.5",
+    "three": "^0.186.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.6.2",
+    "@types/three": "^0.186.0",
+    "electron": "^44.4.3",
+    "electron-builder": "^26.15.3",
+    "gltf-validator": "^2.0.0-dev.3.10",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0"
+  }
+}

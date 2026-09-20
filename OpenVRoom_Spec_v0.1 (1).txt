@@ -1,0 +1,108 @@
+OpenVRoom Specification v0.1 2026-09-20
+
+1.  概要
+    OpenVRoomは、VRMアバターで3Dルームに入り、他ユーザーと交流するオープンなソーシャル3Dプラットフォーム。
+
+基本方針: - 1ルーム = 1つの .vroom ファイル - Web版 + Windows 11版 -
+アカウントなしでも利用可能 - P2P中心 - 既存3D資産を再利用可能 -
+特定ゲームエンジンに依存しない
+
+2.  VRoom Format 拡張子: .vroom 1ファイルで1つの3Dルームを表す。
+    GLB/glTF 2.0を基盤とし、VRoom固有情報をExtensionとして追加する。
+
+要素: Metadata / Scene / Mesh / Material / Texture / Animation / Light /
+Spawn / Collider / Mirror / Audio / Seat / Pickup / Interaction /
+Network Sync
+
+1 unit = 1 meter。 任意JavaScriptを無条件に実行しない。 VRoom
+Componentは仕様で定義したものだけを読み込む。
+
+3.  Loader / Validator .vroomは検証後に読み込む。 検証:
+    Format/Version、Metadata、Scene、Asset
+    Size、外部参照、Component、不正データ。
+
+CLI: vroom validate home.vroom
+
+4.  Avatar 標準はVRM 1.0。
+    端末上のVRMを選択し、入室時に選択中の1体だけを参加者へP2P共有する。
+    入室前には送信しない。他人のVRMは原則セッション中のみ保持する。
+
+5.  Client 共通: TypeScript / Three.js / three-vrm / WebRTC / Web Audio
+    API / WebXR
+
+Web: Viteでビルドしブラウザから参加。
+
+Windows 11: Electron。Web版と同じCore/Rendererを使う。
+
+ゲームロジックをWeb/Windowsで二重実装しない。
+
+6.  Room / Multiplayer Roomを開いたClientがHost。 初期最大6人。
+
+HostはParticipant、Room State、Shared Object、Spawnを管理。
+
+通信: Signaling = Client <-> Server State/Pose = Client -> Host ->
+Clients Voice = P2P VRM = P2P 直接接続不能時 = TURN
+
+Host終了時はRoom終了。初期版ではHost Migrationなし。
+
+7.  Audio / VR Micは初期OFF。明示操作後のみ使用。 Spatial Voice / Mute /
+    User別Volume / Speaking Indicatorを提供。
+    音声は録音・恒久保存しない。 WebXR対応端末から同じRoomへ参加可能。
+
+8.  Server Node.js + TypeScript。 WebSocket Signaling + STUN/TURN。
+
+Signalingは接続を仲介し、VRM・Voice・Room本体を恒久保存しない。 Docker
+Composeで再現可能にする。
+
+新規VPSでは原則: git clone cd OpenVRoom cp .env.example .env docker
+compose up -d
+
+で起動可能にする。 Host OSへのNode.js/coturn個別インストールは不要。
+DNS/TLS/Firewall等はDEPLOY.mdに記載する。
+
+9.  VRoom Editor .vroom制作・編集GUIを提供する。
+
+主機能: GLB/glTF Import / Scene Preview / Object配置 / Spawn / Collider
+/ Mirror / Seat / Pickup等のComponent設定 / .vroom Export
+
+特定ゲームエンジンを必須としない。
+
+10. Importer 既存3D資産を可能な限り.vroomへ変換する。
+
+対象候補: GLB/glTF / FBX / OBJ / Unity Project / .unitypackage / VRChat
+World資産
+
+変換例: Mesh -> VRoom Mesh Material -> glTF Material Collider -> VRoom
+Collider VRC Mirror -> VRoom Mirror VRC Pickup -> VRoom Pickup VRC
+Station -> VRoom Seat VRC ObjectSync -> VRoom Network Sync
+
+変換不能なShader/Script/Udon/独自Componentは黙って破棄せずレポートする。
+既存3D資産の再利用性を重要な設計目標とする。
+
+11. Security
+
+-   Message Schema Validation
+-   Asset Size Limit
+-   Rate Limit
+-   Invite Tokenは暗号学的乱数
+-   Secret/Private Keyを公開Clientへ埋め込まない
+-   不正な外部Script/URLを読み込まない
+-   P2P失敗時はTURNへFallback
+-   退出/切替時にResourceを解放
+
+12. 開発順序
+13. VRoom Format v0.1
+14. Validator
+15. Three.js Loader
+16. starter-room.vroom
+17. VRM Avatar
+18. Web Client
+19. Windows Client
+20. Signaling / WebRTC / TURN
+21. Spatial Voice / WebXR
+22. VRoom Editor
+23. Importer
+
+最初の完成条件: - starter-room.vroomをWeb/Windows双方で開ける -
+VRMでRoom内を移動できる - 別ユーザーを招待できる -
+Avatar/Pose/Voiceが同期する - WebXRから同じRoomへ参加できる
