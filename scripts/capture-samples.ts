@@ -4,7 +4,7 @@ try {
   const page = await browser.newPage({viewport:{width:1440,height:1000}});
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto('http://127.0.0.1:5180/');await expect(page.locator('#loading')).toBeHidden({timeout:60000});
-  for(const [id,title] of [['cafe','ボタニカルカフェ'],['library','雨音の書斎'],['garden','月庭の和室']]) {
+  for(const [id,title] of [['lounge','こもれびのラウンジ'],['cafe','ボタニカルカフェ'],['library','雨音の書斎'],['garden','月庭の和室']]) {
     await page.locator('#settings-button').click(); await page.locator('#tab-room').click();
     await page.locator(`[data-sample=${id}]`).click();
     await expect(page.locator('#settings-dialog')).toBeHidden();
@@ -22,7 +22,7 @@ try {
       Object.assign(container.style, { position:'fixed', inset:'0', zIndex:'1000', background:'#222' });
       document.body.append(container);
       const world = new World(container);
-      await world.loadRoom(await (await fetch(`/rooms/${id}.vroom`)).arrayBuffer());
+      await world.loadRoom(await (await fetch(id === 'lounge' ? '/starter-room.vroom' : `/rooms/${id}.vroom`)).arrayBuffer());
       world.player.visible = false;
       world.player.position.set(0, 0, 0);
       Object.assign(world, { yaw: .42, pitch: .67, distance: 12.2 });

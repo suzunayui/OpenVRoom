@@ -56,6 +56,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <div class="room-actions"><button class="text-button" id="starter-room">${icon('home')}サンプルに戻す</button><a class="text-button" href="./starter-room.vroom" download="starter-room.vroom" aria-label="サンプルルームを保存">${icon('download')}保存</a></div>
         <div class="sample-heading"><h3>サンプルルーム</h3><p>部屋を選んで探索。招待すれば友だちとも遊べます。</p></div>
         <div class="sample-rooms">
+          <button class="sample-room" data-sample="lounge"><img src="./rooms/lounge.jpg" alt="" loading="lazy"><span>こもれびのラウンジ<small>自然光・ソファ・くつろぎ</small></span></button>
           <button class="sample-room" data-sample="cafe"><img src="./rooms/cafe.jpg" alt="" loading="lazy"><span>ボタニカルカフェ<small>植物・真鍮・コーヒー</small></span></button>
           <button class="sample-room" data-sample="library"><img src="./rooms/library.jpg" alt="" loading="lazy"><span>雨音の書斎<small>本棚・暖炉・読書の席</small></span></button>
           <button class="sample-room" data-sample="garden"><img src="./rooms/garden.jpg" alt="" loading="lazy"><span>月庭の和室<small>畳・池・竹の庭</small></span></button>
@@ -247,7 +248,7 @@ try {
     button.onclick = () => {
       if (session || pending) return;
       void busy('サンプルルームを読み込み中…', async () => {
-        const response = await fetch(`./rooms/${button.dataset.sample}.vroom`);
+        const response = await fetch(button.dataset.sample === 'lounge' ? './starter-room.vroom' : `./rooms/${button.dataset.sample}.vroom`);
         if (!response.ok) throw new Error('サンプルルームを取得できませんでした。');
         await showRoom(await response.arrayBuffer(), button.dataset.sample);
         settings.close(); world.focus(); notify('ルームを変更しました。自由に探索してみましょう。');
