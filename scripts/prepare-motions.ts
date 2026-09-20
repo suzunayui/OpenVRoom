@@ -80,31 +80,31 @@ for (const [name, source] of Object.entries({ idle: 'Idle_Loop', walk: 'Walk_Loo
     for (const { name: boneName, object } of mapped) {
       const rotation = object.getWorldQuaternion(new Quaternion()).multiply(rest.get(boneName)!);
       if (name === 'idle') {
-        // Gentle asymmetric upper-body pose in source world axes (+Z forward).
-        // Apply the same delta to descendants so parent changes do not get cancelled.
+        // Author the idle from the neutral T-pose, not the staggered source idle.
+        // Keep pelvis, legs and feet neutral so both soles stay alongside each other.
         const phase = 2 * Math.PI * (frame === frames ? 0 : frame / frames);
-        const arm = /^(left|right)(Shoulder|UpperArm|LowerArm|Hand|Thumb|Index|Middle|Ring|Little)/.test(boneName);
-        const upperBody = arm || ['spine', 'chest', 'upperChest', 'neck', 'head'].includes(boneName);
+        const breath = Math.sin(phase);
         let x = 0, z = 0;
-        if (upperBody) z = 0.025 + 0.012 * Math.sin(phase);
-        if (['neck', 'head'].includes(boneName)) z += 0.065 + 0.018 * Math.sin(phase);
-        if (arm) {
-          const side = boneName.startsWith('left') ? 1 : -1;
-          x = -0.12 + 0.015 * Math.sin(phase);
-          z += side * 0.045;
-          if (!/(Shoulder|UpperArm)$/.test(boneName)) x -= 0.14;
+        if (['spine', 'chest', 'upperChest'].includes(boneName)) { x = 0.006 * breath; z = 0.015; }
+        if (boneName === 'neck') z = 0.045 + 0.008 * breath;
+        if (boneName === 'head') z = 0.085 + 0.012 * breath;
+        if (/^(left|right)(UpperArm|LowerArm|Hand|Thumb|Index|Middle|Ring|Little)/.test(boneName)) {
+          const side = boneName.startsWith('left') ? -1 : 1;
+          const upper = boneName.endsWith('UpperArm');
+          z = side * (upper ? 1.40 : 1.66);
+          x = (upper ? -0.12 : -0.32) + 0.008 * breath;
         }
-        rotation.premultiply(new Quaternion().setFromEuler(new Euler(x, 0, z))).normalize();
+        rotation.setFromEuler(new Euler(x, 0, z));
       }
       rotations[boneName].push(...rotation.toArray().map(round));
       if (boneName === 'leftFoot') { const z = object.getWorldPosition(new Vector3()).z; minFootZ = Math.min(minFootZ, z); maxFootZ = Math.max(maxFootZ, z); }
     }
-    hipsPositions.push(...hips.getWorldPosition(new Vector3()).sub(restHips).toArray().map(round));
+    hipsPositions.push(...(name === 'idle' ? [0, 0, 0] : hips.getWorldPosition(new Vector3()).sub(restHips).toArray().map(round)));
   }
   // Remove horizontal drift; retain the authored side-to-side sway and vertical bounce.
   const originX = hipsPositions[0], originZ = hipsPositions[2];
   for (let i = 0; i < hipsPositions.length; i += 3) { hipsPositions[i] = round(hipsPositions[i] - originX); hipsPositions[i + 2] = round(hipsPositions[i + 2] - originZ); }
-  result.clips[name] = { source: name === 'idle' ? `${source} (OpenVRoom gentle idle)` : source, duration, times, rotations, hipsPositions, referenceSpeed: name === 'idle' ? 0 : 2 * (maxFootZ - minFootZ) / clip.duration };
+  result.clips[name] = { source: name === 'idle' ? 'OpenVRoom feet-together idle' : source, duration, times, rotations, hipsPositions, referenceSpeed: name === 'idle' ? 0 : 2 * (maxFootZ - minFootZ) / clip.duration };
   action.stop();
   console.log(`${name}: ${frames + 1} samples, ${Object.keys(rotations).length} bones, ${result.clips[name].referenceSpeed.toFixed(2)} m/s`);
 }

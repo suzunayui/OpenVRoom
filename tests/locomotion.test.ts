@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, type VRM } from '@pixiv/three-vrm';
-import { Quaternion } from 'three';
+import { Quaternion, Vector3 } from 'three';
 import { AvatarLocomotion, type MotionLibrary } from '../src/core/locomotion';
 import { testVrm } from './fixtures';
 
@@ -48,5 +48,18 @@ test('retargeting works with missing optional bones and produces smooth idle/wal
   for (let i = 0; i < 120; i++) locomotion.update(1 / 60, 0, true);
   assert.equal(locomotion.state, 'idle'); assert.ok(locomotion.weights.idle > 0.99);
   locomotion.reset(); assert.equal(locomotion.weights.idle, 1);
+  locomotion.dispose();
+});
+
+test('idle keeps both feet at their neutral positions throughout the loop', async () => {
+  const vrm = await avatar();
+  vrm.scene.updateMatrixWorld(true);
+  const feet = ['leftFoot', 'rightFoot'].map(name => vrm.humanoid.getNormalizedBoneNode(name as 'leftFoot' | 'rightFoot')!);
+  const rest = feet.map(foot => foot.getWorldPosition(new Vector3()));
+  const locomotion = new AvatarLocomotion(vrm, library);
+  for (let i = 0; i < 300; i++) {
+    locomotion.update(1 / 60, 0, false); vrm.update(1 / 60);
+    feet.forEach((foot, index) => assert.ok(foot.getWorldPosition(new Vector3()).distanceTo(rest[index]) < 0.0001, 'Idle must not stagger or slide either foot'));
+  }
   locomotion.dispose();
 });
